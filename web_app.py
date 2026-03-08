@@ -8,6 +8,7 @@ from config import get_config, get_narrative_config
 from agents import BookAgents
 from story_state import StoryState
 from state_validator import StateValidator
+from migration_helper import MigrationHelper
 import prompts
 import re
 
@@ -365,6 +366,52 @@ def validate_state():
             'success': True,
             'valid': all_valid,
             'report': report
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/migration_status', methods=['GET'])
+def migration_status():
+    """
+    Get migration status for current project.
+    
+    Returns information about whether project has state tracking enabled
+    and what actions are recommended.
+    """
+    try:
+        status = MigrationHelper.get_migration_status()
+        return jsonify({
+            'success': True,
+            'status': status
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/migrate_project', methods=['POST'])
+def migrate_project():
+    """
+    Migrate an existing project to enable state tracking.
+    
+    This creates state files and initializes them with data extracted
+    from existing world, characters, and outline files.
+    
+    Enables backward compatibility for projects created before the
+    narrative engine was added.
+    """
+    try:
+        success, message = MigrationHelper.migrate_existing_project(verbose=False)
+        
+        return jsonify({
+            'success': success,
+            'message': message
         })
     except Exception as e:
         return jsonify({
