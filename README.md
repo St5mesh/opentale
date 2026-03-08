@@ -52,23 +52,31 @@ pip install -r requirements.txt
 
 ## Usage
 
-1. Start the local AI model server according to your `config.py` settings.
+### Quick Start
 
-2. Run the web application:
+1. **Configure your LLM server** (see [Configuration](#configuration) section)
+
+2. **Start the local AI model server** (e.g., LM Studio, Ollama, text-generation-webui)
+   - Ensure a model is loaded and the server is running
+   - Default expects: `http://localhost:1234/v1`
+
+3. **Run the Flask application**:
 ```bash
 python web_app.py
 ```
+You should see: `* Running on http://127.0.0.1:5000`
 
-3. Open your browser and navigate to:
+4. **Open your browser** and navigate to:
 ```
 http://localhost:5000
 ```
 
-4. Follow the step-by-step process in the web interface:
-   - Create a world setting
-   - Generate characters
-   - Create a book outline
-   - Work chapter by chapter to generate your book
+5. **Follow the step-by-step process**:
+    - **World Building**: Describe your story's setting and world
+    - **Characters**: Generate main characters for your world
+    - **Outline**: Create a chapter-by-chapter outline
+    - **Chapter Writing**: Generate scenes and full chapters iteratively
+    - **Editing**: Refine and save your content locally
 
 ## Book Writing Workflow
 
@@ -111,7 +119,156 @@ book_output/
 
 ## Configuration
 
-The system can be configured through `config.py` for the AI model settings and `prompts.py` for generation prompts.
+### Prerequisites: Setting up a Local AI Model Server
+
+This application requires a local LLM (Large Language Model) server running before you start the Flask app. The server must provide an OpenAI-compatible API endpoint.
+
+**Choose one of the following options:**
+
+#### Option 1: LM Studio (Recommended for beginners)
+1. Download LM Studio from [lmstudio.ai](https://lmstudio.ai)
+2. Install and launch the application
+3. Go to the "Local Server" tab
+4. Select a model (e.g., `gemma-3-12b-it` to match defaults)
+5. Click "Start Server"
+6. Server will run on `http://localhost:1234/v1` (default)
+
+#### Option 2: Ollama
+1. Download Ollama from [ollama.ai](https://ollama.ai)
+2. Install and run `ollama serve` in a terminal
+3. In another terminal, pull a model: `ollama pull gemma:latest`
+4. Server runs on `http://localhost:11434/v1` by default
+
+#### Option 3: text-generation-webui
+1. Clone the repository: `git clone https://github.com/oobabooga/text-generation-webui`
+2. Follow their setup instructions
+3. Run with OpenAI API enabled: `python server.py --openai-api`
+4. Server typically runs on `http://localhost:5000/v1`
+
+---
+
+### Configuring `config.py`
+
+Edit `config.py` to match your local model server settings:
+
+```python
+"""Configuration for the book generation system"""
+import os
+from typing import Dict, List
+
+def get_config(local_url: str = "http://localhost:1234/v1") -> Dict:
+    """Get the configuration for the agents
+    
+    Args:
+        local_url: The base URL of your local LLM server's OpenAI-compatible API endpoint
+    """
+    
+    # Basic config for local LLM
+    config_list = [{
+        'model': 'gemma-3-12b-it',        # Model name as shown in your LLM server
+        'base_url': local_url,             # URL of your LLM server (e.g., http://localhost:1234/v1)
+        'api_key': "not-needed"            # Can be any value; local servers typically don't need real keys
+    }]
+
+    # Common configuration for all agents
+    agent_config = {
+        "seed": 42,                        # Random seed for reproducibility
+        "temperature": 0.7,                # 0.0 = deterministic, 1.0 = creative (0.5-0.8 recommended for writing)
+        "config_list": config_list,
+        "timeout": 600,                    # Timeout in seconds (600 = 10 minutes per request)
+        "cache_seed": None
+    }
+    
+    return agent_config
+```
+
+#### Configuration Examples
+
+**Example 1: Using LM Studio (default)**
+- No changes needed! LM Studio runs on `http://localhost:1234/v1` by default
+- Ensure you've selected `gemma-3-12b-it` (or similar) in LM Studio and started the server
+
+**Example 2: Using Ollama with a different model**
+```python
+def get_config(local_url: str = "http://localhost:11434/v1") -> Dict:
+    config_list = [{
+        'model': 'gemma:latest',           # Use your Ollama model name here
+        'base_url': local_url,
+        'api_key': "not-needed"
+    }]
+    # ... rest of config
+```
+
+**Example 3: Using text-generation-webui on a different port**
+```python
+def get_config(local_url: str = "http://localhost:8000/v1") -> Dict:
+    config_list = [{
+        'model': 'your-model-name',        # Your model name from webui
+        'base_url': local_url,
+        'api_key': "not-needed"
+    }]
+    # ... rest of config
+```
+
+**Example 4: Remote server (not localhost)**
+```python
+def get_config(local_url: str = "http://192.168.1.100:1234/v1") -> Dict:
+    config_list = [{
+        'model': 'gemma-3-12b-it',
+        'base_url': local_url,
+        'api_key': "not-needed"
+    }]
+    # ... rest of config
+```
+
+#### Configuration Parameters Explained
+
+| Parameter | Purpose | Default | Notes |
+|-----------|---------|---------|-------|
+| `base_url` | LLM server API endpoint | `http://localhost:1234/v1` | Must end with `/v1` for OpenAI compatibility |
+| `model` | Model identifier | `gemma-3-12b-it` | Must match a model available on your server |
+| `temperature` | Output creativity | `0.7` | Lower (0.3-0.5) = focused, Higher (0.8-1.0) = creative |
+| `seed` | Reproducibility | `42` | Same seed + temp produces consistent results |
+| `timeout` | Request timeout | `600` seconds | Increase if generations are timing out on slower hardware |
+
+#### Finding Your Server Settings
+
+**How to find the correct `base_url`:**
+1. Start your LLM server
+2. Look for a message like: "Server running on http://localhost:XXXX"
+3. The API endpoint is typically: `http://localhost:XXXX/v1`
+
+**How to find the correct `model` name:**
+- **LM Studio**: See the model name in the "Local Server" tab
+- **Ollama**: Run `ollama list` to see available models
+- **text-generation-webui**: Check your loaded model in the UI
+
+---
+
+### Optional: Customizing Prompts
+
+You can also fine-tune generation behavior by editing `prompts.py`:
+- Modify prompt templates to change how the AI approaches world-building, character creation, etc.
+- All prompt templates are defined as strings with `{placeholders}` for context insertion
+
+---
+
+### Troubleshooting Connection Issues
+
+**Error: "Connection refused" or "Network error"**
+- Verify your LLM server is actually running
+- Check that the `base_url` in `config.py` matches your server's actual address
+- Ensure the URL ends with `/v1`
+
+**Error: "Model not found" or "Invalid model"**
+- The model name in `config.py` doesn't exist on your server
+- Check your server UI to see available models
+- Verify you've downloaded/pulled the model in your LLM server
+
+**Timeout errors**
+- Your hardware is too slow for the model
+- Try a smaller model (e.g., `mistral-7b` instead of `gemma-3-12b-it`)
+- Increase `timeout` in `config.py` to `900` or `1200` seconds
 
 ## Contributing
 
