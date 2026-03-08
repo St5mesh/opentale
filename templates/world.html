@@ -56,6 +56,52 @@
         </div>
     </div>
     
+    <!-- Theme Display Container (Narrative Engine Feature) -->
+    <div class="col-12 mb-4" id="themeContainer" style="display: none;">
+        <div class="card border-info">
+            <div class="card-header bg-info text-white">
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <h3 class="h5 mb-0">📖 Story Theme (Narrative Engine)</h3>
+                    <button type="button" class="btn btn-sm btn-light" id="extractThemeBtn">Extract Theme</button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div id="themeContent" style="display: none;">
+                    <div class="mb-3">
+                        <h6><strong>Theme Statement</strong></h6>
+                        <p id="themeStatement" class="text-muted">Loading...</p>
+                    </div>
+                    <div class="mb-3">
+                        <h6><strong>Core Conflict</strong></h6>
+                        <p id="coreConflict" class="text-muted">Loading...</p>
+                    </div>
+                    <div class="mb-3">
+                        <h6><strong>Moral Tension</strong></h6>
+                        <p id="moralTension" class="text-muted">Loading...</p>
+                    </div>
+                    <div class="mb-3">
+                        <h6><strong>Thematic Tests</strong></h6>
+                        <ul id="thematicTests" class="text-muted">
+                            <li>Loading...</li>
+                        </ul>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button type="button" class="btn btn-success btn-sm" id="approveThemeBtn">✓ Approve Theme</button>
+                        <button type="button" class="btn btn-secondary btn-sm" id="extractThemeAgainBtn">⟲ Extract Again</button>
+                    </div>
+                </div>
+                <div id="themeLoading" class="alert alert-info mb-0">
+                    <div class="d-flex align-items-center">
+                        <div class="spinner-border spinner-border-sm me-2" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <div>Extracting story theme from world and topic...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
     <!-- Final world setting container -->
     <div class="col-12" id="worldResultContainer" {% if not world_theme %}style="display: none;"{% endif %} data-has-world="{{ world_theme|length > 0 }}">
         <div class="card">
@@ -68,9 +114,14 @@
                         <label for="worldTheme" class="form-label">Edit your world setting if needed:</label>
                         <textarea class="form-control" id="worldTheme" name="world_theme" rows="12">{{ world_theme }}</textarea>
                     </div>
-                    <div class="d-flex justify-content-between">
-                        <button type="submit" class="btn btn-success" id="saveWorldBtn">Save Changes</button>
-                        <a href="/characters" class="btn btn-primary">Continue to Characters</a>
+                    <div class="d-flex justify-content-between flex-wrap gap-2">
+                        <div>
+                            <button type="submit" class="btn btn-success" id="saveWorldBtn">Save Changes</button>
+                        </div>
+                        <div>
+                            <button type="button" class="btn btn-info" id="proceedToThemeBtn">Extract Theme →</button>
+                            <a href="/characters" class="btn btn-primary">Continue to Characters</a>
+                        </div>
                     </div>
                 </form>
                 
@@ -345,6 +396,78 @@ $(document).ready(function() {
     function formatMessage(message) {
         return message.replace(/\n/g, '<br>');
     }
+    
+    // Show theme container when world is finalized
+    $(document).ready(function() {
+        if ($('#worldTheme').val().length > 0) {
+            $('#themeContainer').show();
+        }
+    });
+    
+    // Extract theme button
+    $('#proceedToThemeBtn').click(function(e) {
+        e.preventDefault();
+        $('#themeContainer').show();
+        $('#extractThemeBtn').click();
+    });
+    
+    // Extract theme
+    $('#extractThemeBtn').click(function() {
+        $(this).prop('disabled', true);
+        $('#themeContent').hide();
+        $('#themeLoading').show();
+        
+        $.ajax({
+            type: 'POST',
+            url: '/extract_theme',
+            data: JSON.stringify({
+                topic: $('#topic').val()
+            }),
+            contentType: 'application/json',
+            success: function(response) {
+                if (response.success) {
+                    const theme = response.theme;
+                    $('#themeStatement').text(theme.theme_statement || 'Not extracted');
+                    $('#coreConflict').text(theme.core_conflict || 'Not extracted');
+                    $('#moralTension').text(theme.moral_tension || 'Not extracted');
+                    
+                    const testsList = $('#thematicTests').empty();
+                    if (theme.thematic_tests && theme.thematic_tests.length > 0) {
+                        theme.thematic_tests.forEach(test => {
+                            testsList.append($('<li>').text(test));
+                        });
+                    } else {
+                        testsList.append($('<li>').text('No tests extracted'));
+                    }
+                    
+                    $('#themeLoading').hide();
+                    $('#themeContent').show();
+                    $('#extractThemeBtn').prop('disabled', false);
+                } else {
+                    alert('Error extracting theme: ' + (response.error || 'Unknown error'));
+                    $('#themeLoading').hide();
+                    $('#extractThemeBtn').prop('disabled', false);
+                }
+            },
+            error: function(xhr) {
+                const error = xhr.responseJSON ? xhr.responseJSON.error : 'Network error';
+                alert('Error extracting theme: ' + error);
+                $('#themeLoading').hide();
+                $('#extractThemeBtn').prop('disabled', false);
+            }
+        });
+    });
+    
+    // Approve theme
+    $('#approveThemeBtn').click(function() {
+        alert('Theme approved! ✓ This will be used to guide character development and scene generation.');
+        // In the future, this can track approval in the session
+    });
+    
+    // Extract theme again
+    $('#extractThemeAgainBtn').click(function() {
+        $('#extractThemeBtn').click();
+    });
     
     // Save world theme
     $('#saveWorldForm').submit(function(e) {

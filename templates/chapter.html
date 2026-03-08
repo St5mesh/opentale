@@ -107,7 +107,22 @@
                     </div>
                 </div>
                 
-                <div id="generatingIndicator" class="alert alert-info mt-3 d-none">
+                <!-- Story State Inspection (Narrative Engine Feature) -->
+                <div class="col-md-4">
+                    <div class="card mb-3 border-success">
+                        <div class="card-header bg-success text-white">
+                            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                                <h5 class="h6 mb-0">📖 Story State</h5>
+                                <button type="button" class="btn btn-sm btn-light" id="refreshStateBtn" title="Refresh story state">↻</button>
+                            </div>
+                        </div>
+                        <div class="card-body small">
+                            <div id="storyStateContent" style="max-height: 300px; overflow-y: auto;">
+                                <p class="text-muted text-center">Click "Load State" to view current story state</p>
+                            </div>
+                            <button type="button" class="btn btn-sm btn-outline-success w-100 mt-2" id="loadStateBtn">Load State</button>
+                        </div>
+                    </div>
                     <div class="d-flex align-items-center">
                         <div class="spinner-border spinner-border-sm me-2" role="status">
                             <span class="visually-hidden">Loading...</span>
@@ -291,6 +306,81 @@ $(document).ready(function() {
                 $('#saveChapterBtn').prop('disabled', false);
             }
         });
+    });
+    
+    // Load and display story state
+    $('#loadStateBtn').click(function() {
+        $(this).prop('disabled', true);
+        $(this).text('Loading...');
+        
+        $.ajax({
+            type: 'GET',
+            url: '/get_story_state',
+            dataType: 'json',
+            success: function(response) {
+                if (response.success) {
+                    const state = response.state;
+                    let html = '';
+                    
+                    // Characters
+                    if (state.characters && Object.keys(state.characters).length > 0) {
+                        html += '<div class="mb-2"><strong>Characters:</strong><ul class="small mb-2">';
+                        Object.entries(state.characters).forEach(([name, info]) => {
+                            html += '<li><strong>' + name + '</strong>: ' + (info.status || 'unknown') + '</li>';
+                        });
+                        html += '</ul></div>';
+                    }
+                    
+                    // Artifacts
+                    if (state.artifacts && Object.keys(state.artifacts).length > 0) {
+                        html += '<div class="mb-2"><strong>Artifacts:</strong><ul class="small mb-2">';
+                        Object.entries(state.artifacts).forEach(([name, info]) => {
+                            html += '<li><strong>' + name + '</strong>: ' + (info.status || 'unknown');
+                            if (info.location) html += ' @ ' + info.location;
+                            html += '</li>';
+                        });
+                        html += '</ul></div>';
+                    }
+                    
+                    // World Elements
+                    if (state.world && Object.keys(state.world).length > 0) {
+                        html += '<div class="mb-2"><strong>World:</strong><ul class="small mb-2">';
+                        Object.entries(state.world).forEach(([name, info]) => {
+                            html += '<li><strong>' + name + '</strong>: ' + (info.status || 'unknown') + '</li>';
+                        });
+                        html += '</ul></div>';
+                    }
+                    
+                    // Plot Progress
+                    if (state.plot_progress) {
+                        html += '<div class="mb-2"><strong>Progress:</strong><br><small>';
+                        html += 'Completed Scenes: ' + (state.plot_progress.completed_scenes || 0) + '<br>';
+                        html += '</small></div>';
+                    }
+                    
+                    if (!html) {
+                        html = '<p class="text-muted text-center small">No story state recorded yet</p>';
+                    }
+                    
+                    $('#storyStateContent').html(html);
+                } else {
+                    $('#storyStateContent').html('<p class="text-danger small">Error loading state</p>');
+                }
+                
+                $('#loadStateBtn').prop('disabled', false);
+                $('#loadStateBtn').text('Load State');
+            },
+            error: function() {
+                $('#storyStateContent').html('<p class="text-danger small">Error loading state</p>');
+                $('#loadStateBtn').prop('disabled', false);
+                $('#loadStateBtn').text('Load State');
+            }
+        });
+    });
+    
+    // Refresh state button
+    $('#refreshStateBtn').click(function() {
+        $('#loadStateBtn').click();
     });
 });
 </script>

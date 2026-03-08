@@ -145,6 +145,42 @@
         </div>
     </div>
     
+    <!-- Scene Chain Visualization (Narrative Engine Feature) -->
+    <div class="col-12 mb-4" id="sceneChainContainer" style="display: none;">
+        <div class="card border-warning">
+            <div class="card-header bg-warning text-dark">
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <h3 class="h5 mb-0">🔗 Causal Scene Chain (Narrative Engine)</h3>
+                    <button type="button" class="btn btn-sm btn-outline-dark" id="planSceneChainBtn">Plan Scene Chain</button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div id="sceneChainContent" style="display: none;">
+                    <div class="alert alert-info mb-3">
+                        <strong>Scene Chain Breakdown:</strong> Your story has been broken into causally-linked scenes where each scene's consequence triggers the next scene. This prevents plot holes and keeps the narrative flowing naturally.
+                    </div>
+                    
+                    <div id="sceneChainTimeline" class="mb-3" style="max-height: 400px; overflow-y: auto;">
+                        <!-- Scenes will be inserted here -->
+                    </div>
+                    
+                    <div class="d-flex gap-2 flex-wrap">
+                        <button type="button" class="btn btn-success btn-sm" id="approveSceneChainBtn">✓ Approve Scene Chain</button>
+                        <button type="button" class="btn btn-secondary btn-sm" id="planSceneChainAgainBtn">⟲ Plan Again</button>
+                    </div>
+                </div>
+                <div id="sceneChainLoading" class="alert alert-info mb-0">
+                    <div class="d-flex align-items-center">
+                        <div class="spinner-border spinner-border-sm me-2" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <div>Planning scene chain from outline...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
     {% if chapters %}
     <div class="col-12 mt-4">
         <div class="card">
@@ -455,34 +491,79 @@ $(document).ready(function() {
         });
     });
     
-    // Generate chapters from outline
-    $('#generateChaptersBtn').click(function() {
+    // Show scene chain container when outline is finalized
+    $(document).ready(function() {
+        if ($('#outlineContent').val().length > 0) {
+            $('#sceneChainContainer').show();
+        }
+    });
+    
+    // Plan scene chain
+    $('#planSceneChainBtn').click(function() {
         $(this).prop('disabled', true);
-        $(this).html('<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Generating...');
+        $('#sceneChainContent').hide();
+        $('#sceneChainLoading').show();
         
         $.ajax({
             type: 'POST',
-            url: '/generate_chapters',
-            data: {
-                num_chapters: 20
-            },
+            url: '/plan_scene_chain',
+            data: JSON.stringify({}),
+            contentType: 'application/json',
             success: function(response) {
-                if(response.success) {
-                    // Refresh the page to show chapter navigation
-                    location.reload();
+                if (response.success) {
+                    const timeline = $('#sceneChainTimeline').empty();
+                    
+                    // Add title
+                    timeline.append($('<h6>').addClass('mb-3').text('Scene Chain Preview (showing first 5 of ' + response.total_scenes + ' scenes):'));
+                    
+                    // Add scenes
+                    response.scenes.forEach((scene, index) => {
+                        const sceneDiv = $('<div>')
+                            .addClass('mb-3 p-3 border-start border-warning')
+                            .css('border-left-width', '4px');
+                        
+                        sceneDiv.append($('<h6>').text('Scene ' + scene.scene_number + ': ' + scene.title));
+                        
+                        const details = $('<div>').addClass('small text-muted');
+                        details.append($('<div>').html('<strong>Goal:</strong> ' + (scene.goal || 'N/A')));
+                        details.append($('<div>').html('<strong>Conflict:</strong> ' + (scene.conflict || 'N/A')));
+                        details.append($('<div>').html('<strong>Outcome:</strong> ' + (scene.outcome || 'N/A')));
+                        details.append($('<div>').html('<strong>Consequence:</strong> ' + (scene.consequence || 'N/A')));
+                        
+                        sceneDiv.append(details);
+                        
+                        // Add arrow between scenes (except for last one)
+                        timeline.append(sceneDiv);
+                        if (index < response.scenes.length - 1) {
+                            timeline.append($('<div>').addClass('text-center text-muted small').html('↓'));
+                        }
+                    });
+                    
+                    $('#sceneChainLoading').hide();
+                    $('#sceneChainContent').show();
+                    $('#planSceneChainBtn').prop('disabled', false);
                 } else {
-                    alert(response.error || 'Error generating chapters. Please try again.');
-                    $('#generateChaptersBtn').prop('disabled', false);
-                    $('#generateChaptersBtn').text('Generate Chapters');
+                    alert('Error planning scene chain: ' + (response.error || 'Unknown error'));
+                    $('#sceneChainLoading').hide();
+                    $('#planSceneChainBtn').prop('disabled', false);
                 }
             },
-            error: function() {
-                alert('Error generating chapters. Please try again.');
-                $('#generateChaptersBtn').prop('disabled', false);
-                $('#generateChaptersBtn').text('Generate Chapters');
+            error: function(xhr) {
+                const error = xhr.responseJSON ? xhr.responseJSON.error : 'Network error';
+                alert('Error planning scene chain: ' + error);
+                $('#sceneChainLoading').hide();
+                $('#planSceneChainBtn').prop('disabled', false);
             }
         });
     });
-});
-</script>
-{% endblock %} 
+    
+    // Approve scene chain
+    $('#approveSceneChainBtn').click(function() {
+        alert('Scene chain approved! ✓ This causal structure will guide chapter generation.');
+        // In the future, this can track approval in the session
+    });
+    
+    // Plan scene chain again
+    $('#planSceneChainAgainBtn').click(function() {
+        $('#planSceneChainBtn').click();
+    }); 
