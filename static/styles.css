@@ -1,62 +1,14 @@
 /* Custom styles for OpenTale */
 
-/* Make textareas bigger for writing */
-textarea.form-control {
-    min-height: 150px;
-}
-
-/* Add some padding to the main content area */
-main.container {
-    padding-top: 2rem;
-    padding-bottom: 2rem;
-}
-
-/* Improve the progress bar visibility */
-.progress {
-    height: 1.5rem;
-    font-size: 0.9rem;
-    font-weight: bold;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-}
-
-.progress-bar {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: width 0.6s ease;
-}
-
-/* Style cards consistently */
-.card {
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-    margin-bottom: 1.5rem;
-}
-
-.card-header {
-    font-weight: bold;
-}
-
-/* Chapter navigation styling */
-.list-group-item.active {
-    background-color: #0d6efd;
-    border-color: #0d6efd;
-}
-
-/* Add some hover effect to buttons */
-.btn {
-    transition: all 0.3s ease;
-}
-
-.btn-outline-primary:hover {
-    background-color: #0d6efd;
-    color: white;
-}
-
 /* Ensure footer stays at bottom */
 body {
     display: flex;
     flex-direction: column;
     min-height: 100vh;
+    background-color: #f8f9fa;
+    background-image: linear-gradient(rgba(255, 255, 255, 0.7) 1px, transparent 1px),
+                       linear-gradient(90deg, rgba(255, 255, 255, 0.7) 1px, transparent 1px);
+    background-size: 20px 20px;
 }
 
 main {
@@ -67,7 +19,170 @@ footer {
     margin-top: auto;
 }
 
-/* Make textareas easier to read when content is long */
+/* ===== Responsive Header ===== */
+header .progress-tracker {
+    overflow-x: auto;
+}
+
+header .btn-group {
+    flex-wrap: wrap;
+    gap: 0.25rem;
+}
+
+/* On mobile, make buttons stack better */
+@media (max-width: 768px) {
+    header .d-flex {
+        flex-wrap: wrap;
+        gap: 1rem;
+    }
+    
+    header .btn-group {
+        width: 100%;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.25rem;
+    }
+    
+    header .btn-group .btn {
+        flex: 1 1 auto;
+        min-width: 60px;
+        font-size: 0.85rem;
+        padding: 0.375rem 0.5rem;
+    }
+}
+
+/* ===== Main Content Padding ===== */
+main.container {
+    padding-top: 1rem;
+    padding-bottom: 1rem;
+}
+
+@media (min-width: 768px) {
+    main.container {
+        padding-top: 2rem;
+        padding-bottom: 2rem;
+    }
+}
+
+/* ===== Progress Bar ===== */
+.progress {
+    height: 1.5rem;
+    font-size: 0.85rem;
+    font-weight: bold;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    margin-bottom: 1.5rem;
+}
+
+@media (max-width: 576px) {
+    .progress {
+        height: 1.25rem;
+        font-size: 0.75rem;
+    }
+}
+
+.progress-bar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: width 0.6s ease;
+}
+
+/* ===== Card Styling ===== */
+.card {
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    margin-bottom: 1.5rem;
+}
+
+.card-header {
+    font-weight: bold;
+}
+
+/* Responsive card headers with buttons */
+.card-header .d-flex {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+@media (max-width: 768px) {
+    .card-header .d-flex {
+        flex-direction: column;
+    }
+    
+    .card-header .btn {
+        width: 100%;
+        font-size: 0.85rem;
+    }
+    
+    .card-header h2 {
+        font-size: 1.1rem !important;
+    }
+}
+
+/* ===== Chat Interface ===== */
+#chatMessages {
+    min-height: 250px;
+    max-height: 400px;
+    overflow-y: auto;
+    word-wrap: break-word;
+}
+
+@media (max-width: 768px) {
+    #chatMessages {
+        min-height: 200px;
+        max-height: 300px;
+    }
+}
+
+/* Flexible chat input layout */
+.d-flex {
+    flex-wrap: wrap;
+}
+
+.d-flex > input[type="text"],
+.d-flex > input[class*="form-control"],
+.d-flex > button[class*="btn"] {
+    min-width: 100%;
+}
+
+@media (min-width: 576px) {
+    .d-flex > input[type="text"],
+    .d-flex > input[class*="form-control"] {
+        min-width: auto;
+        flex: 1;
+    }
+    
+    .d-flex > button[class*="btn"] {
+        min-width: auto;
+        flex: 0 1 auto;
+    }
+}
+
+/* ===== Two-Column Layouts ===== */
+@media (max-width: 768px) {
+    .col-md-8,
+    .col-md-4 {
+        margin-bottom: 1rem;
+    }
+}
+
+/* ===== Textareas ===== */
+textarea.form-control {
+    min-height: 150px;
+    font-size: 1rem;
+    line-height: 1.6;
+    padding: 1rem;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+@media (max-width: 576px) {
+    textarea.form-control {
+        min-height: 120px;
+        font-size: 0.95rem;
+        padding: 0.75rem;
+    }
+}
+
 textarea#chapterContent,
 textarea#outlineContent,
 textarea#worldTheme,
@@ -77,16 +192,140 @@ textarea#charactersContent {
     padding: 1rem;
 }
 
-/* Make loading spinners more visible */
+/* ===== Buttons ===== */
+.btn {
+    transition: all 0.3s ease;
+    word-break: break-word;
+}
+
+.btn-outline-primary:hover {
+    background-color: #0d6efd;
+    color: white;
+}
+
+/* Responsive button sizing */
+@media (max-width: 576px) {
+    .btn-lg {
+        padding: 0.5rem 1rem;
+        font-size: 1rem;
+    }
+    
+    .btn-sm {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.75rem;
+    }
+    
+    .btn {
+        padding: 0.375rem 0.75rem;
+    }
+}
+
+/* ===== List Groups ===== */
+.list-group-item.active {
+    background-color: #0d6efd;
+    border-color: #0d6efd;
+}
+
+/* Responsive list items */
+@media (max-width: 576px) {
+    .list-group-item {
+        padding: 0.5rem 0.75rem;
+        font-size: 0.9rem;
+    }
+    
+    .list-group-item.d-flex {
+        flex-direction: column;
+    }
+    
+    .list-group-item .btn {
+        margin-top: 0.5rem;
+        width: 100%;
+    }
+}
+
+/* ===== Alerts ===== */
+@media (max-width: 576px) {
+    .alert {
+        padding: 0.75rem;
+        font-size: 0.9rem;
+    }
+    
+    .alert ul {
+        padding-left: 1.25rem;
+    }
+}
+
+/* ===== Spinners ===== */
 .spinner-border {
     width: 1.5rem;
     height: 1.5rem;
 }
 
-/* Add a subtle background pattern */
-body {
-    background-color: #f8f9fa;
-    background-image: linear-gradient(rgba(255, 255, 255, 0.7) 1px, transparent 1px),
-                      linear-gradient(90deg, rgba(255, 255, 255, 0.7) 1px, transparent 1px);
-    background-size: 20px 20px;
-} 
+@media (max-width: 576px) {
+    .spinner-border {
+        width: 1rem;
+        height: 1rem;
+    }
+    
+    .spinner-border-sm {
+        width: 0.8rem;
+        height: 0.8rem;
+    }
+}
+
+/* ===== Accordions ===== */
+.accordion-button {
+    padding: 0.75rem 1rem;
+    font-size: 0.95rem;
+}
+
+@media (max-width: 576px) {
+    .accordion-button {
+        padding: 0.5rem 0.75rem;
+        font-size: 0.85rem;
+    }
+}
+
+/* ===== General Spacing Utilities ===== */
+@media (max-width: 576px) {
+    .mb-4 {
+        margin-bottom: 1rem !important;
+    }
+    
+    .mt-3 {
+        margin-top: 0.75rem !important;
+    }
+    
+    .mt-4 {
+        margin-top: 1rem !important;
+    }
+    
+    .p-3 {
+        padding: 0.75rem !important;
+    }
+}
+
+/* ===== Typography ===== */
+@media (max-width: 576px) {
+    .h1, h1 { font-size: 1.5rem; }
+    .h2, h2 { font-size: 1.25rem; }
+    .h3, h3 { font-size: 1.1rem; }
+    .h4, h4 { font-size: 1rem; }
+    .h5, h5 { font-size: 0.95rem; }
+    .h6, h6 { font-size: 0.9rem; }
+    
+    .lead {
+        font-size: 1rem;
+    }
+}
+
+/* ===== Row Gaps ===== */
+.row {
+    gap: 0.5rem;
+}
+
+@media (min-width: 768px) {
+    .row {
+        gap: 1rem;
+    }
+}

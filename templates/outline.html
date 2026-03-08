@@ -6,13 +6,15 @@
 <div class="row">
     <div class="col-12 mb-4">
         <div class="card">
-            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-                <h2 class="h4 mb-0">Book Outline</h2>
-                <div>
-                    <a href="/characters" class="btn btn-light btn-sm">&laquo; Back to Characters</a>
-                    {% if chapters %}
-                    <a href="/chapter/1" class="btn btn-light btn-sm">Start Writing Chapters &raquo;</a>
-                    {% endif %}
+            <div class="card-header bg-primary text-white">
+                <div class="d-flex justify-content-between align-items-start align-items-sm-center flex-wrap gap-2">
+                    <h2 class="h5 mb-0">Book Outline</h2>
+                    <div class="d-flex gap-1 flex-wrap justify-content-end">
+                        <a href="/characters" class="btn btn-light btn-sm">&laquo; Back</a>
+                        {% if chapters %}
+                        <a href="/chapter/1" class="btn btn-light btn-sm">Write &raquo;</a>
+                        {% endif %}
+                    </div>
                 </div>
             </div>
             <div class="card-body">
@@ -68,7 +70,7 @@
                 <h3 class="h5 mb-0">Outline Development Chat</h3>
             </div>
             <div class="card-body">
-                <div id="chatMessages" class="p-3 mb-3 border rounded" style="height: 400px; overflow-y: auto;">
+                <div id="chatMessages" class="p-3 mb-3 border rounded">
                     <!-- Chat messages will appear here -->
                     {% if not outline %}
                     <div class="text-center p-3">

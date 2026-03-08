@@ -330,13 +330,16 @@ def save_outline():
 @app.route('/chapter/<int:chapter_number>', methods=['GET', 'POST'])
 def chapter(chapter_number):
     """Generate or display a specific chapter"""
-    chapters = session.get('chapters', [])
+    chapters = []
     
-    # If no chapters in session, try to load from file
-    if not chapters and os.path.exists('book_output/chapters.json'):
+    # Always load from disk first to get latest outline
+    if os.path.exists('book_output/chapters.json'):
         with open('book_output/chapters.json', 'r') as f:
             chapters = json.load(f)
             session['chapters'] = chapters
+    # Fall back to session if disk doesn't exist
+    elif session.get('chapters'):
+        chapters = session.get('chapters', [])
     
     # Check if chapter exists
     chapter_data = None
@@ -439,17 +442,20 @@ def save_chapter(chapter_number):
 @app.route('/scene/<int:chapter_number>', methods=['GET', 'POST'])
 def scene(chapter_number):
     """Generate a scene for a specific chapter"""
-    # Load chapters data - similar logic to the chapter route
-    chapters = session.get('chapters', [])
+    # Load chapters data - always load from disk first to get latest
+    chapters = []
     
-    # If no chapters in session, try to load from file
-    if not chapters and os.path.exists('book_output/outline.json'):
+    # Always load from disk first to get latest outline
+    if os.path.exists('book_output/chapters.json'):
         try:
-            with open('book_output/outline.json', 'r') as f:
+            with open('book_output/chapters.json', 'r') as f:
                 chapters = json.load(f)
                 session['chapters'] = chapters
         except Exception as e:
-            print(f"Error loading outline.json: {e}")
+            print(f"Error loading chapters.json: {e}")
+    # Fall back to session if disk doesn't exist
+    elif session.get('chapters'):
+        chapters = session.get('chapters', [])
     
     # Print diagnostic info
     print(f"Number of chapters loaded: {len(chapters)}")
@@ -878,7 +884,7 @@ def finalize_outline_stream():
         session['chapters'] = chapters
         
         # Save structured outline for later use
-        with open('book_output/outline.json', 'w') as f:
+        with open('book_output/chapters.json', 'w') as f:
             json.dump(chapters, f, indent=2)
         
         # Send completion marker
@@ -903,9 +909,36 @@ def parse_outline_to_chapters(outline_content, num_chapters):
         else:
             outline_text = outline_content
         
-        # Split by chapter using a more specific regex to avoid duplicate chapters
-        chapter_matches = re.finditer(r'Chapter\s+(\d+):\s+([^\n]+)', outline_text)
         seen_chapters = set()
+        
+        # First, handle range entries like "Chapters 10-19: Description"
+        range_matches = re.finditer(r'Chapters\s+(\d+)\s*-\s*(\d+):\s+([^\n]+)', outline_text)
+        for match in range_matches:
+            start_num = int(match.group(1))
+            end_num = int(match.group(2))
+            range_description = match.group(3).strip()
+            
+            # Extract content for the range
+            start_pos = match.start()
+            next_chapter_match = re.search(r'Chapter[s]?\s+(\d+)', outline_text[start_pos + 1:])
+            if next_chapter_match:
+                end_pos = start_pos + 1 + next_chapter_match.start()
+                range_content = outline_text[start_pos:end_pos].strip()
+            else:
+                range_content = outline_text[start_pos:].strip()
+            
+            # Create individual chapter entries for each chapter in the range
+            for chapter_num in range(start_num, end_num + 1):
+                if chapter_num not in seen_chapters:
+                    seen_chapters.add(chapter_num)
+                    chapters.append({
+                        'chapter_number': chapter_num,
+                        'title': f"Part {chapter_num}: {range_description}",
+                        'prompt': range_content
+                    })
+        
+        # Then, handle standard chapter entries "Chapter N: Title"
+        chapter_matches = re.finditer(r'Chapter\s+(\d+):\s+([^\n]+)', outline_text)
         
         for match in chapter_matches:
             chapter_num = int(match.group(1))
@@ -919,7 +952,7 @@ def parse_outline_to_chapters(outline_content, num_chapters):
             
             # Find the end of this chapter's content (start of next chapter or end of text)
             start_pos = match.start()
-            next_chapter_match = re.search(r'Chapter\s+(\d+):', outline_text[start_pos + 1:])
+            next_chapter_match = re.search(r'Chapter[s]?\s+(\d+)', outline_text[start_pos + 1:])
             
             if next_chapter_match:
                 end_pos = start_pos + 1 + next_chapter_match.start()
@@ -970,4 +1003,4 @@ def parse_outline_to_chapters(outline_content, num_chapters):
     return chapters
 
 if __name__ == '__main__':
-    app.run(debug=True) 
+    app.run(host='0.0.0.0', debug=True, port=5000) 
