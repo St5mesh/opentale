@@ -706,3 +706,167 @@ Format it as a properly structured outline with clear chapter sections and event
             stream=True,
             max_tokens=8000
         )
+    
+    # ========================================================================
+    # NARRATIVE ENGINE METHODS (Story State, Scene Chain, Character Arcs)
+    # ========================================================================
+    
+    def extract_theme(self, topic: str, world_theme: str) -> Dict:
+        """Extract the core theme from the story premise and world.
+        
+        Returns a dict with:
+        - theme_statement
+        - core_conflict
+        - moral_tension
+        - thematic_tests (list)
+        """
+        import prompts
+        from narrative_parsing import NarrativeParser
+        
+        prompt = prompts.THEME_EXTRACTION_PROMPT.format(
+            topic=topic,
+            world_theme=world_theme
+        )
+        
+        response = self.generate_content("theme_extractor", prompt)
+        
+        # Parse response using robust parser
+        return NarrativeParser.parse_theme_response(response)
+    
+    def extract_character_arcs(self, characters: str, theme: Dict) -> Dict:
+        """Extract character arc stages for each character.
+        
+        Returns a dict mapping character names to their arc stages.
+        """
+        import prompts
+        from narrative_parsing import NarrativeParser
+        
+        theme_str = f"Theme: {theme.get('theme_statement', '')}\nCore Conflict: {theme.get('core_conflict', '')}"
+        
+        prompt = prompts.CHARACTER_ARCS_PROMPT.format(
+            characters=characters,
+            theme=theme_str
+        )
+        
+        response = self.generate_content("character_architect", prompt)
+        
+        # Parse response using robust parser
+        return NarrativeParser.parse_character_arcs_response(response)
+    
+    def plan_scene_chain(self, outline: str, num_chapters: int = 10) -> List[Dict]:
+        """Plan a scene chain that breaks outline into individual causal scenes.
+        
+        Returns a list of scene dicts with structure:
+        {
+            'scene_number': int,
+            'title': str,
+            'goal': str,
+            'conflict': str,
+            'outcome': str,
+            'consequence': str,
+            'next_trigger': str
+        }
+        """
+        import prompts
+        from narrative_parsing import NarrativeParser
+        
+        prompt = prompts.SCENE_CHAIN_PLANNER_PROMPT.format(
+            outline=outline
+        )
+        
+        response = self.generate_content("scene_planner", prompt)
+        
+        # Parse response using robust parser
+        return NarrativeParser.parse_scene_chain_response(response)
+    
+    def plan_next_scene(self, story_state: Dict, outline: str, 
+                       scene_chain: List[Dict], completed_scenes: int) -> Dict:
+        """Given current story state, plan the next scene to generate.
+        
+        Returns a dict with:
+        - scene_goal
+        - scene_conflict
+        - scene_outcome
+        - affected_characters
+        - constraints
+        """
+        import prompts
+        from story_state import StoryState
+        from narrative_parsing import NarrativeParser
+        
+        next_scene_num = completed_scenes + 1
+        chain_preview = "\n".join([
+            f"Scene {s['scene_number']}: {s['title']}"
+            for s in scene_chain[:min(5, len(scene_chain))]
+        ])
+        
+        state_summary = StoryState.get_full_state_summary(story_state)
+        
+        prompt = prompts.SCENE_PLANNER_PROMPT.format(
+            story_state=state_summary,
+            outline=outline,
+            scene_chain_preview=chain_preview,
+            completed_scenes=completed_scenes,
+            next_scene_number=next_scene_num
+        )
+        
+        response = self.generate_content("scene_planner", prompt)
+        
+        # Parse response using robust parser
+        return NarrativeParser.parse_next_scene_plan(response)
+    
+    def generate_scene_with_state(self, scene_goal: str, scene_conflict: str,
+                                 scene_outcome: str, story_context: str,
+                                 world_theme: str, characters: str,
+                                 current_state: str) -> str:
+        """Generate a scene that respects current story state.
+        
+        Args:
+            scene_goal: What must happen
+            scene_conflict: What opposes the goal
+            scene_outcome: How it resolves
+            story_context: Narrative context
+            world_theme: World description
+            characters: Character list
+            current_state: Current story state summary
+        
+        Returns:
+            Generated scene content
+        """
+        import prompts
+        
+        prompt = prompts.SCENE_GENERATION_WITH_STATE_PROMPT.format(
+            scene_goal=scene_goal,
+            scene_conflict=scene_conflict,
+            scene_outcome=scene_outcome,
+            story_context=story_context,
+            world_theme=world_theme,
+            relevant_characters=characters,
+            current_state=current_state
+        )
+        
+        return self.generate_content("scene_writer", prompt)
+    
+    def extract_state_updates(self, scene_content: str) -> Dict:
+        """Extract story state changes from generated scene content.
+        
+        Returns a dict with:
+        - character_changes: dict of character -> changes
+        - artifact_changes: dict of artifact -> changes
+        - world_changes: dict of element -> changes
+        - plot_progress: list of major points
+        """
+        import prompts
+        from narrative_parsing import NarrativeParser
+        
+        # Limit scene content to first 2000 chars for efficiency
+        scene_preview = scene_content[:2000] + "..." if len(scene_content) > 2000 else scene_content
+        
+        prompt = prompts.STATE_UPDATE_PROMPT.format(
+            scene_content=scene_preview
+        )
+        
+        response = self.generate_content("state_updater", prompt)
+        
+        # Parse response using robust parser
+        return NarrativeParser.parse_state_update_response(response)

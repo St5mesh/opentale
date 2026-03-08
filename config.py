@@ -34,3 +34,19 @@ def get_config(local_url: str = None) -> Dict:
     }
     
     return agent_config
+
+
+def get_narrative_config() -> Dict:
+    """Get configuration for narrative engine features.
+    
+    Returns:
+        Dict with settings for scene chains, state tracking, etc.
+    """
+    return {
+        'scene_chain_enabled': True,
+        'state_tracking_enabled': True,
+        'character_arcs_enabled': True,
+        'theme_extraction_enabled': True,
+        'scenes_per_chapter': int(os.getenv('SCENES_PER_CHAPTER', '5')),
+        'state_history_limit': int(os.getenv('STATE_HISTORY_LIMIT', '100')),
+    }
