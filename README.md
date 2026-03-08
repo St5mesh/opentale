@@ -33,6 +33,31 @@ The application consists of:
 
 ## Installation
 
+### Option 1: Docker (Recommended - includes LLM server)
+
+1. Clone the repository:
+```bash
+git clone https://github.com/yourusername/ai-book-writer.git
+cd ai-book-writer
+```
+
+2. Start with Docker Compose:
+```bash
+docker-compose up
+```
+
+3. Access the app at `http://localhost:5000`
+
+**That's it!** Docker Compose automatically:
+- Starts Ollama LLM server
+- Downloads and loads a model
+- Launches the Flask app
+- Creates persistent volumes for your work
+
+For more details, see [DOCKER.md](DOCKER.md)
+
+### Option 2: Manual Installation (Local Python)
+
 1. Clone the repository:
 ```bash
 git clone https://github.com/yourusername/ai-book-writer.git
@@ -52,7 +77,21 @@ pip install -r requirements.txt
 
 ## Usage
 
-### Quick Start
+### Quick Start (Docker)
+
+If you used Docker Compose installation:
+
+```bash
+docker-compose up
+```
+
+Then open your browser to `http://localhost:5000`
+
+See [DOCKER.md](DOCKER.md) for Docker commands and troubleshooting.
+
+### Quick Start (Manual Installation)
+
+If you used manual Python installation:
 
 1. **Configure your LLM server** (see [Configuration](#configuration) section)
 
