@@ -7,6 +7,7 @@ from flask import Flask, render_template, request, jsonify, session, Response, s
 from config import get_config, get_narrative_config
 from agents import BookAgents
 from story_state import StoryState
+from state_validator import StateValidator
 import prompts
 import re
 
@@ -20,9 +21,60 @@ os.makedirs('book_output/chapters', exist_ok=True)
 agent_config = get_config()
 narrative_config = get_narrative_config()
 
+
+def ensure_state_files_exist():
+    """
+    Ensure all narrative state files exist. Creates defaults if missing.
+    Enables backward compatibility with existing projects without state files.
+    """
+    if not os.path.exists(StoryState.STATE_FILE):
+        state = StoryState.initialize_story_state()
+        StoryState.save_story_state(state)
+    
+    if not os.path.exists(StoryState.CHAIN_FILE):
+        chain = StoryState.initialize_scene_chain()
+        StoryState.save_scene_chain(chain)
+    
+    if not os.path.exists(StoryState.ARCS_FILE):
+        arcs = StoryState.initialize_character_arcs()
+        StoryState.save_character_arcs(arcs)
+    
+    if not os.path.exists(StoryState.THEME_FILE):
+        theme = StoryState.initialize_theme()
+        StoryState.save_theme(theme)
+
+
+def validate_all_state_files():
+    """
+    Validate all state files for integrity. Attempt repairs if issues found.
+    
+    Returns: (all_valid, validation_report)
+    """
+    state = StoryState.load_story_state()
+    chain = StoryState.load_scene_chain()
+    arcs = StoryState.load_character_arcs()
+    theme = StoryState.load_theme()
+    
+    report = StateValidator.full_validation_report(state, chain, arcs, theme)
+    
+    # Auto-repair if issues found
+    if not report['story_state']['valid']:
+        state, repairs = StateValidator.repair_state(state)
+        StoryState.save_story_state(state)
+    
+    if not report['scene_chain']['valid']:
+        chain, repairs = StateValidator.repair_scene_chain(chain)
+        StoryState.save_scene_chain(chain)
+    
+    return report['overall_valid'], report
+
 @app.route('/')
 def index():
     """Render the home page"""
+    # Ensure state files exist (backward compatibility)
+    if narrative_config.get('state_tracking_enabled', False):
+        ensure_state_files_exist()
+    
     return render_template('index.html')
 
 @app.route('/world', methods=['GET'])
@@ -296,6 +348,29 @@ def get_story_state():
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/validate_state', methods=['GET'])
+def validate_state():
+    """
+    Validate all state files for integrity.
+    
+    Returns validation report with any issues found.
+    Attempts auto-repair for fixable issues.
+    """
+    try:
+        all_valid, report = validate_all_state_files()
+        
+        return jsonify({
+            'success': True,
+            'valid': all_valid,
+            'report': report
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
 
 @app.route('/characters', methods=['GET'])
 def characters():

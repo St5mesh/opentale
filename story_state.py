@@ -70,10 +70,15 @@ class StoryState:
     @staticmethod
     def load_story_state() -> Dict[str, Any]:
         """Load story state from file, or create new if doesn't exist."""
-        if os.path.exists(StoryState.STATE_FILE):
+        if not os.path.exists(StoryState.STATE_FILE):
+            return StoryState.initialize_story_state()
+        
+        try:
             with open(StoryState.STATE_FILE, 'r') as f:
                 return json.load(f)
-        return StoryState.initialize_story_state()
+        except (json.JSONDecodeError, IOError):
+            # Corrupted or unreadable file; return default
+            return StoryState.initialize_story_state()
     
     @staticmethod
     def save_story_state(state: Dict[str, Any]) -> None:
@@ -85,10 +90,14 @@ class StoryState:
     @staticmethod
     def load_scene_chain() -> Dict[str, Any]:
         """Load scene chain from file, or create new if doesn't exist."""
-        if os.path.exists(StoryState.CHAIN_FILE):
+        if not os.path.exists(StoryState.CHAIN_FILE):
+            return StoryState.initialize_scene_chain()
+        
+        try:
             with open(StoryState.CHAIN_FILE, 'r') as f:
                 return json.load(f)
-        return StoryState.initialize_scene_chain()
+        except (json.JSONDecodeError, IOError):
+            return StoryState.initialize_scene_chain()
     
     @staticmethod
     def save_scene_chain(chain: Dict[str, Any]) -> None:
@@ -100,10 +109,14 @@ class StoryState:
     @staticmethod
     def load_character_arcs() -> Dict[str, Any]:
         """Load character arcs from file, or create new if doesn't exist."""
-        if os.path.exists(StoryState.ARCS_FILE):
+        if not os.path.exists(StoryState.ARCS_FILE):
+            return StoryState.initialize_character_arcs()
+        
+        try:
             with open(StoryState.ARCS_FILE, 'r') as f:
                 return json.load(f)
-        return StoryState.initialize_character_arcs()
+        except (json.JSONDecodeError, IOError):
+            return StoryState.initialize_character_arcs()
     
     @staticmethod
     def save_character_arcs(arcs: Dict[str, Any]) -> None:
@@ -115,10 +128,14 @@ class StoryState:
     @staticmethod
     def load_theme() -> Dict[str, Any]:
         """Load theme from file, or create new if doesn't exist."""
-        if os.path.exists(StoryState.THEME_FILE):
+        if not os.path.exists(StoryState.THEME_FILE):
+            return StoryState.initialize_theme()
+        
+        try:
             with open(StoryState.THEME_FILE, 'r') as f:
                 return json.load(f)
-        return StoryState.initialize_theme()
+        except (json.JSONDecodeError, IOError):
+            return StoryState.initialize_theme()
     
     @staticmethod
     def save_theme(theme: Dict[str, Any]) -> None:
@@ -286,3 +303,74 @@ class StoryState:
             sections.append(StoryState.get_world_state_summary(state))
         
         return "\n\n".join(sections) if sections else "No story state recorded yet."
+    
+    @staticmethod
+    def load_with_validation(filepath: str, default_factory, validator_func=None) -> Dict[str, Any]:
+        """
+        Load JSON file with validation. Falls back to default if invalid.
+        
+        Args:
+            filepath: Path to JSON file
+            default_factory: Function that returns default structure
+            validator_func: Optional validation function returning (is_valid, issues)
+        
+        Returns: Loaded or default data structure
+        """
+        if not os.path.exists(filepath):
+            return default_factory()
+        
+        try:
+            with open(filepath, 'r') as f:
+                data = json.load(f)
+            
+            # Validate if validator provided
+            if validator_func and callable(validator_func):
+                is_valid, _ = validator_func(data)
+                if not is_valid:
+                    # Log validation failure but continue with data
+                    pass
+            
+            return data
+        except (json.JSONDecodeError, IOError):
+            # File corrupted or unreadable; return default
+            return default_factory()
+    
+    @staticmethod
+    def save_with_backup(filepath: str, data: Dict[str, Any]) -> bool:
+        """
+        Save JSON file with automatic backup of existing file.
+        
+        Args:
+            filepath: Path to save to
+            data: Data to save
+        
+        Returns: True if save successful, False otherwise
+        """
+        try:
+            os.makedirs(os.path.dirname(filepath), exist_ok=True)
+            
+            # Create backup if file exists
+            if os.path.exists(filepath):
+                backup_path = filepath + '.backup'
+                try:
+                    with open(filepath, 'r') as f:
+                        backup_data = json.load(f)
+                    with open(backup_path, 'w') as f:
+                        json.dump(backup_data, f, indent=2)
+                except (IOError, json.JSONDecodeError):
+                    pass  # Skip backup if current file is corrupted
+            
+            # Write new file atomically (write to temp, then rename)
+            temp_path = filepath + '.tmp'
+            with open(temp_path, 'w') as f:
+                json.dump(data, f, indent=2)
+            
+            # Rename temp to target
+            if os.path.exists(filepath):
+                os.remove(filepath)
+            os.rename(temp_path, filepath)
+            
+            return True
+        except IOError as e:
+            print(f"Error saving {filepath}: {e}")
+            return False
