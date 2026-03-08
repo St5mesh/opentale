@@ -4,8 +4,9 @@ Flask web application for OpenTale
 import os
 import json
 from flask import Flask, render_template, request, jsonify, session, Response, stream_with_context, flash, redirect
-from config import get_config
+from config import get_config, get_narrative_config
 from agents import BookAgents
+from story_state import StoryState
 import prompts
 import re
 
@@ -17,6 +18,7 @@ os.makedirs('book_output/chapters', exist_ok=True)
 
 # Initialize global variables
 agent_config = get_config()
+narrative_config = get_narrative_config()
 
 @app.route('/')
 def index():
@@ -196,6 +198,104 @@ def save_world():
         f.write(world_theme)
     
     return jsonify({'success': True})
+
+# ============================================================================
+# NARRATIVE ENGINE ROUTES (Phase 3)
+# ============================================================================
+
+@app.route('/extract_theme', methods=['POST'])
+def extract_theme():
+    """Extract story theme from world and topic (if feature enabled)"""
+    if not narrative_config.get('theme_extraction_enabled', True):
+        return jsonify({'error': 'Theme extraction not enabled'}), 400
+    
+    data = request.json
+    topic = data.get('topic', session.get('topic', ''))
+    
+    # Load world theme from file or session
+    world_theme = ''
+    if os.path.exists('book_output/world.txt'):
+        with open('book_output/world.txt', 'r') as f:
+            world_theme = f.read().strip()
+    else:
+        world_theme = session.get('world_theme', '')
+    
+    if not world_theme:
+        return jsonify({'error': 'World theme not available'}), 400
+    
+    try:
+        book_agents = BookAgents(agent_config)
+        theme_data = book_agents.extract_theme(topic, world_theme)
+        
+        # Save theme to file
+        theme_file_data = StoryState.initialize_theme()
+        StoryState.set_theme(
+            theme_file_data,
+            theme_data.get('theme_statement', ''),
+            theme_data.get('core_conflict', ''),
+            theme_data.get('moral_tension', '')
+        )
+        StoryState.save_theme(theme_file_data)
+        
+        session['theme'] = theme_data
+        
+        return jsonify({
+            'success': True,
+            'theme': theme_data
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/plan_scene_chain', methods=['POST'])
+def plan_scene_chain():
+    """Plan scene chain from outline (if feature enabled)"""
+    if not narrative_config.get('scene_chain_enabled', True):
+        return jsonify({'error': 'Scene chain planning not enabled'}), 400
+    
+    data = request.json
+    
+    # Load outline from file
+    if not os.path.exists('book_output/outline.txt'):
+        return jsonify({'error': 'Outline not available'}), 400
+    
+    with open('book_output/outline.txt', 'r') as f:
+        outline = f.read().strip()
+    
+    try:
+        book_agents = BookAgents(agent_config)
+        scenes = book_agents.plan_scene_chain(outline)
+        
+        # Save scene chain to file
+        chain_data = StoryState.initialize_scene_chain()
+        for scene in scenes:
+            StoryState.add_scene_to_chain(chain_data, scene)
+        StoryState.save_scene_chain(chain_data)
+        
+        session['scene_chain'] = scenes
+        
+        return jsonify({
+            'success': True,
+            'total_scenes': len(scenes),
+            'scenes': scenes[:5]  # Return preview of first 5 scenes
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/get_story_state', methods=['GET'])
+def get_story_state():
+    """Retrieve current story state"""
+    try:
+        state = StoryState.load_story_state()
+        theme = StoryState.load_theme()
+        
+        return jsonify({
+            'success': True,
+            'state': state,
+            'theme': theme,
+            'state_summary': StoryState.get_full_state_summary(state)
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/characters', methods=['GET'])
 def characters():
