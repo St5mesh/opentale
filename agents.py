@@ -766,7 +766,7 @@ Format it as a properly structured outline with clear chapter sections and event
         """Extract the core theme from the story premise and world.
         
         Returns a dict with:
-        - theme_statement
+        - statement
         - core_conflict
         - moral_tension
         - thematic_tests (list)
@@ -792,7 +792,7 @@ Format it as a properly structured outline with clear chapter sections and event
         import prompts
         from narrative_parsing import NarrativeParser
         
-        theme_str = f"Theme: {theme.get('theme_statement', '')}\nCore Conflict: {theme.get('core_conflict', '')}"
+        theme_str = f"Theme: {theme.get('statement', '')}\nCore Conflict: {theme.get('core_conflict', '')}"
         
         prompt = prompts.CHARACTER_ARCS_PROMPT.format(
             characters=characters,

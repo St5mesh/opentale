@@ -19,7 +19,7 @@ class NarrativeParser:
         Looks for THEME STATEMENT, CORE CONFLICT, MORAL TENSION, and THEMATIC TESTS.
         """
         result = {
-            'theme_statement': '',
+            'statement': '',
             'core_conflict': '',
             'moral_tension': '',
             'thematic_tests': []
@@ -46,7 +46,7 @@ class NarrativeParser:
             return ''
         
         # Extract each field with fallbacks
-        result['theme_statement'] = extract_field(
+        result['statement'] = extract_field(
             normalized, 'THEME\\s+STATEMENT',
             ['CORE\\s+CONFLICT', 'CORE\\s+TENSION', 'STORY\\s+PREMISE']
         )
@@ -82,10 +82,10 @@ class NarrativeParser:
             ]
         
         # Fallback: if nothing extracted, try to find any substantial content
-        if not result['theme_statement'] and 'statement' in normalized.lower():
+        if not result['statement'] and 'statement' in normalized.lower():
             match = re.search(r'statement[:\s]+([^.\n]+(?:[.\n][^.\n]*)?)', normalized, re.IGNORECASE)
             if match:
-                result['theme_statement'] = match.group(1).strip()
+                result['statement'] = match.group(1).strip()
         
         return result
     

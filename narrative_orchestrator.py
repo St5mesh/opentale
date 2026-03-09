@@ -45,7 +45,7 @@ class NarrativeOrchestrator:
         # Update theme structure
         StoryState.set_theme(
             self.theme,
-            theme_data.get('theme_statement', ''),
+            theme_data.get('statement', ''),
             theme_data.get('core_conflict', ''),
             theme_data.get('moral_tension', '')
         )

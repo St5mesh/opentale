@@ -201,15 +201,15 @@ class StateValidator:
         issues = []
         
         # Check required fields (can be None/empty initially, but structure must exist)
-        required_fields = {'theme_statement', 'core_conflict', 'moral_tension', 'approved'}
+        required_fields = {'statement', 'core_conflict', 'moral_tension', 'approved'}
         for field in required_fields:
             if field not in theme:
                 issues.append(f"Missing required field: {field}")
         
         # Validate types
-        if 'theme_statement' in theme and theme['theme_statement'] is not None:
-            if not isinstance(theme['theme_statement'], str):
-                issues.append(f"theme_statement must be string, got {type(theme['theme_statement'])}")
+        if 'statement' in theme and theme['statement'] is not None:
+            if not isinstance(theme['statement'], str):
+                issues.append(f"statement must be string, got {type(theme['statement'])}")
         
         if 'core_conflict' in theme and theme['core_conflict'] is not None:
             if not isinstance(theme['core_conflict'], str):

@@ -7,6 +7,9 @@ narrative consistency across scenes within a chapter.
 
 import json
 import os
+import fcntl
+import tempfile
+from contextlib import contextmanager
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 
@@ -15,6 +18,35 @@ class ChapterStateManager:
     """Manages chapter-level state persistence and history."""
     
     STATES_DIR = 'book_output/states'
+    _lock_files = {}  # In-memory lock file handles
+    
+    @staticmethod
+    @contextmanager
+    def _acquire_lock(lock_path: str):
+        """Context manager for acquiring a file lock."""
+        import logging
+        lock_dir = os.path.dirname(lock_path)
+        os.makedirs(lock_dir, exist_ok=True)
+        
+        lock_file = None
+        try:
+            # Open or create lock file
+            lock_file = open(lock_path, 'w')
+            # Acquire exclusive lock
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            yield
+        finally:
+            if lock_file:
+                try:
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                    lock_file.close()
+                except Exception as e:
+                    logging.error(f"Error releasing lock {lock_path}: {e}")
+    
+    @staticmethod
+    def _get_lock_path(chapter_number: int) -> str:
+        """Get the lock file path for a chapter."""
+        return os.path.join(ChapterStateManager.STATES_DIR, f'chapter_{chapter_number}.lock')
     
     @staticmethod
     def ensure_states_directory():
@@ -43,20 +75,29 @@ class ChapterStateManager:
         
         Returns:
             Chapter states dict or None if not found
+            
+        Raises:
+            IOError: If file exists but cannot be read
+            ValueError: If JSON is invalid
         """
+        import logging
         path = ChapterStateManager.get_chapter_states_path(chapter_number)
         if os.path.exists(path):
             try:
                 with open(path, 'r') as f:
                     return json.load(f)
-            except Exception as e:
-                print(f"Error loading chapter {chapter_number} states: {e}")
+            except json.JSONDecodeError as e:
+                logging.error(f"Invalid JSON in chapter {chapter_number} states: {e}")
+                raise ValueError(f"Invalid JSON in chapter {chapter_number} states: {e}")
+            except IOError as e:
+                logging.error(f"Cannot read chapter {chapter_number} states: {e}")
+                raise IOError(f"Cannot read chapter {chapter_number} states: {e}")
         return None
     
     @staticmethod
     def save_chapter_states(chapter_number: int, states: Dict[str, Any]) -> bool:
         """
-        Save states for a chapter.
+        Save states for a chapter with file locking.
         
         Args:
             chapter_number: Which chapter
@@ -64,16 +105,26 @@ class ChapterStateManager:
         
         Returns:
             True if successful
+            
+        Raises:
+            IOError: If directory cannot be created or file cannot be written
         """
+        import logging
         try:
             ChapterStateManager.ensure_states_directory()
+            lock_path = ChapterStateManager._get_lock_path(chapter_number)
             path = ChapterStateManager.get_chapter_states_path(chapter_number)
-            with open(path, 'w') as f:
-                json.dump(states, f, indent=2)
+            
+            with ChapterStateManager._acquire_lock(lock_path):
+                with open(path, 'w') as f:
+                    json.dump(states, f, indent=2)
             return True
+        except IOError as e:
+            logging.error(f"Cannot save chapter {chapter_number} states: {e}")
+            raise IOError(f"Cannot save chapter {chapter_number} states: {e}")
         except Exception as e:
-            print(f"Error saving chapter {chapter_number} states: {e}")
-            return False
+            logging.error(f"Error saving chapter {chapter_number} states: {e}")
+            raise
     
     @staticmethod
     def record_scene_state_transition(
@@ -84,7 +135,7 @@ class ChapterStateManager:
         scene_summary: str = ""
     ) -> bool:
         """
-        Record a state transition caused by scene generation.
+        Record a state transition caused by scene generation with file locking.
         
         This creates a history entry showing how states changed during scene drafting.
         
@@ -97,37 +148,50 @@ class ChapterStateManager:
         
         Returns:
             True if successful
+            
+        Raises:
+            IOError: If history file cannot be written
         """
+        import logging
         try:
             ChapterStateManager.ensure_states_directory()
+            lock_path = ChapterStateManager._get_lock_path(chapter_number)
             history_path = ChapterStateManager.get_chapter_states_history_path(chapter_number)
             
-            # Load existing history
-            history = []
-            if os.path.exists(history_path):
-                with open(history_path, 'r') as f:
-                    history = json.load(f)
-            
-            # Add new transition
-            transition = {
-                'timestamp': datetime.now().isoformat(),
-                'scene_number': scene_number,
-                'scene_summary': scene_summary,
-                'before_state': before_state,
-                'after_state': after_state,
-                'changed_fields': ChapterStateManager._get_changed_fields(before_state, after_state)
-            }
-            
-            history.append(transition)
-            
-            # Save updated history
-            with open(history_path, 'w') as f:
-                json.dump(history, f, indent=2)
+            with ChapterStateManager._acquire_lock(lock_path):
+                # Load existing history
+                history = []
+                if os.path.exists(history_path):
+                    try:
+                        with open(history_path, 'r') as f:
+                            history = json.load(f)
+                    except (json.JSONDecodeError, IOError) as e:
+                        logging.error(f"Error loading state history for chapter {chapter_number}: {e}")
+                        raise ValueError(f"Corrupted history file for chapter {chapter_number}: {e}")
+                
+                # Add new transition
+                transition = {
+                    'timestamp': datetime.now().isoformat(),
+                    'scene_number': scene_number,
+                    'scene_summary': scene_summary,
+                    'before_state': before_state,
+                    'after_state': after_state,
+                    'changed_fields': ChapterStateManager._get_changed_fields(before_state, after_state)
+                }
+                
+                history.append(transition)
+                
+                # Save updated history
+                with open(history_path, 'w') as f:
+                    json.dump(history, f, indent=2)
             
             return True
+        except (IOError, ValueError) as e:
+            logging.error(f"Error recording state transition: {e}")
+            raise
         except Exception as e:
-            print(f"Error recording state transition: {e}")
-            return False
+            logging.error(f"Unexpected error recording state transition: {e}")
+            raise
     
     @staticmethod
     def get_state_history(chapter_number: int) -> List[Dict[str, Any]]:
@@ -136,14 +200,23 @@ class ChapterStateManager:
         
         Returns:
             List of transitions, oldest first
+            
+        Raises:
+            IOError: If history file cannot be read
+            ValueError: If history file is corrupted
         """
+        import logging
         history_path = ChapterStateManager.get_chapter_states_history_path(chapter_number)
         if os.path.exists(history_path):
             try:
                 with open(history_path, 'r') as f:
                     return json.load(f)
-            except Exception as e:
-                print(f"Error loading state history: {e}")
+            except json.JSONDecodeError as e:
+                logging.error(f"Corrupted history file for chapter {chapter_number}: {e}")
+                raise ValueError(f"Corrupted history file for chapter {chapter_number}: {e}")
+            except IOError as e:
+                logging.error(f"Cannot read history file for chapter {chapter_number}: {e}")
+                raise IOError(f"Cannot read history file for chapter {chapter_number}: {e}")
         return []
     
     @staticmethod
@@ -267,9 +340,10 @@ class ChapterStateManager:
             try:
                 with open(output_path, 'w') as f:
                     f.write(report)
-                print(f"Exported chapter states report to {output_path}")
-            except Exception as e:
-                print(f"Error exporting report: {e}")
+            except IOError as e:
+                import logging
+                logging.error(f"Error exporting report to {output_path}: {e}")
+                raise IOError(f"Error exporting report to {output_path}: {e}")
         
         return report
     
@@ -283,7 +357,11 @@ class ChapterStateManager:
         
         Returns:
             True if successful
+            
+        Raises:
+            IOError: If files cannot be deleted
         """
+        import logging
         try:
             ChapterStateManager.ensure_states_directory()
             
@@ -298,6 +376,6 @@ class ChapterStateManager:
                 os.remove(history_path)
             
             return True
-        except Exception as e:
-            print(f"Error clearing chapter states: {e}")
-            return False
+        except IOError as e:
+            logging.error(f"Cannot delete chapter {chapter_number} state files: {e}")
+            raise IOError(f"Cannot delete chapter {chapter_number} state files: {e}")

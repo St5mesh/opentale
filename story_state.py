@@ -60,7 +60,7 @@ class StoryState:
     def initialize_theme() -> Dict[str, Any]:
         """Create an empty theme structure."""
         return {
-            'theme_statement': None,
+            'statement': None,
             'core_conflict': None,
             'moral_tension': None,
             'extracted_at': None,
@@ -248,7 +248,7 @@ class StoryState:
     def set_theme(theme: Dict[str, Any], statement: str, core_conflict: str,
                   moral_tension: str) -> None:
         """Set theme properties."""
-        theme['theme_statement'] = statement
+        theme['statement'] = statement
         theme['core_conflict'] = core_conflict
         theme['moral_tension'] = moral_tension
         theme['extracted_at'] = datetime.now().isoformat()
@@ -315,7 +315,12 @@ class StoryState:
             validator_func: Optional validation function returning (is_valid, issues)
         
         Returns: Loaded or default data structure
+        
+        Raises:
+            ValueError: If validation fails with an invalid state
         """
+        import logging
+        
         if not os.path.exists(filepath):
             return default_factory()
         
@@ -325,14 +330,17 @@ class StoryState:
             
             # Validate if validator provided
             if validator_func and callable(validator_func):
-                is_valid, _ = validator_func(data)
+                is_valid, issues = validator_func(data)
                 if not is_valid:
-                    # Log validation failure but continue with data
-                    pass
+                    logging.error(f"Validation failed for {filepath}: {issues}")
+                    raise ValueError(f"State validation failed for {filepath}: {issues}")
             
             return data
-        except (json.JSONDecodeError, IOError):
-            # File corrupted or unreadable; return default
+        except json.JSONDecodeError as e:
+            logging.error(f"JSON decode error in {filepath}: {e}")
+            return default_factory()
+        except IOError as e:
+            logging.error(f"IO error reading {filepath}: {e}")
             return default_factory()
     
     @staticmethod

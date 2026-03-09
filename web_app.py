@@ -310,7 +310,7 @@ def extract_theme():
         theme_file_data = StoryState.initialize_theme()
         StoryState.set_theme(
             theme_file_data,
-            theme_data.get('theme_statement', ''),
+            theme_data.get('statement', ''),
             theme_data.get('core_conflict', ''),
             theme_data.get('moral_tension', '')
         )
