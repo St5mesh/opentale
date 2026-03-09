@@ -626,4 +626,82 @@ Format as JSON:
 }}
 
 Extract state changes now (return only valid JSON):
+"""
+
+
+# ============================================================================
+# CHAPTER-SPECIFIC STATE GENERATION
+# ============================================================================
+
+CHAPTER_INITIAL_STATES_PROMPT = """
+You are the Story State Keeper, responsible for tracking all narrative state for chapter {chapter_number}.
+
+Based on the chapter outline:
+{chapter_outline}
+
+And the world setting:
+{world_theme}
+
+And the characters:
+{characters}
+
+{previous_chapter_context}
+
+Generate the INITIAL story state for this chapter. This state reflects:
+1. What is true about each character at the START of this chapter
+2. What is true about key artifacts
+3. What is true about important locations
+4. What has already been completed/resolved
+5. What conflicts or goals drive this chapter
+
+For each character, specify:
+- status: Current emotional/physical/narrative state (e.g., "determined to find the artifact", "recovering from betrayal")
+- location: Where they are at chapter start
+- relationships: Key relationships and their status
+- knowledge: What they know and don't know
+- goals: What they want to achieve this chapter
+
+For each artifact:
+- status: destroyed, hidden, active, cursed, etc.
+- location: Where it is
+- owner: Who possesses it (if applicable)
+- significance: Why it matters for this chapter
+
+Format as JSON with structure:
+{{
+  "chapter": {chapter_number},
+  "characters": {{
+    "Character Name": {{
+      "status": "status description",
+      "location": "location",
+      "relationships": {{"other_character": "relationship status"}},
+      "knowledge": ["fact1", "fact2"],
+      "goals": ["goal1", "goal2"]
+    }}
+  }},
+  "artifacts": {{
+    "Artifact Name": {{
+      "status": "status",
+      "location": "location",
+      "owner": "owner or 'unowned'",
+      "significance": "why it matters"
+    }}
+  }},
+  "world": {{
+    "current_date": "ISO date",
+    "locations": {{
+      "Location Name": {{
+        "description": "current state",
+        "inhabitants": ["char1", "char2"],
+        "status": "stable/contested/changed"
+      }}
+    }},
+    "active_conflicts": ["conflict1", "conflict2"],
+    "completed_quests": {completed_quests},
+    "pending_quests": {pending_quests}
+  }},
+  "chapter_hook": "The connecting element from previous chapter that launches this chapter"
+}}
+
+Generate the chapter initial states now (return only valid JSON):
 """ 

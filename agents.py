@@ -1152,3 +1152,71 @@ Format it as a properly structured outline with clear chapter sections and event
             pass
         
         return {"characters": [], "artifacts": [], "world": []}
+    
+    def generate_chapter_initial_states(
+        self,
+        chapter_number: int,
+        chapter_outline: str,
+        world_theme: str,
+        characters: str,
+        previous_chapter_states: Optional[Dict] = None,
+        completed_quests: Optional[List[str]] = None,
+        pending_quests: Optional[List[str]] = None
+    ) -> Dict:
+        """
+        Generate initial story states for a specific chapter (lazy generation on chapter load).
+        
+        This method is called when a user starts drafting a chapter, before any scenes are created.
+        It generates the state snapshot at the beginning of this chapter.
+        
+        Args:
+            chapter_number: Which chapter we're generating states for
+            chapter_outline: The outline/synopsis for this chapter
+            world_theme: The world setting description
+            characters: Character descriptions
+            previous_chapter_states: States from the end of previous chapter (for context)
+            completed_quests: List of quests completed before this chapter
+            pending_quests: List of quests still pending
+        
+        Returns:
+            Dict with initial states for the chapter
+        """
+        import prompts
+        
+        # Build context from previous chapter
+        previous_context = ""
+        if previous_chapter_states:
+            prev_summary = json.dumps(previous_chapter_states, indent=2)
+            previous_context = f"And the story state at the END of chapter {chapter_number - 1}:\n\n{prev_summary}\n\n"
+        
+        completed_quests = completed_quests or []
+        pending_quests = pending_quests or []
+        
+        prompt = prompts.CHAPTER_INITIAL_STATES_PROMPT.format(
+            chapter_number=chapter_number,
+            chapter_outline=chapter_outline,
+            world_theme=world_theme,
+            characters=characters,
+            previous_chapter_context=previous_context,
+            completed_quests=json.dumps(completed_quests),
+            pending_quests=json.dumps(pending_quests)
+        )
+        
+        response = self.generate_content("state_keeper", prompt)
+        
+        try:
+            start = response.find('{')
+            end = response.rfind('}') + 1
+            if start != -1 and end > start:
+                json_str = response[start:end]
+                return json.loads(json_str)
+        except (json.JSONDecodeError, ValueError):
+            print(f"Error parsing chapter states response: {response[:500]}")
+        
+        return {
+            "chapter": chapter_number,
+            "characters": {},
+            "artifacts": {},
+            "world": {},
+            "chapter_hook": ""
+        }

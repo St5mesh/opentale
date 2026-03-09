@@ -13,15 +13,10 @@ class NarrativeParser:
     
     @staticmethod
     def parse_theme_response(response: str) -> Dict[str, str]:
-        """Parse theme extraction response.
+        """Parse theme extraction response with robust extraction.
         
-        Expected format:
-        THEME STATEMENT: [text]
-        CORE CONFLICT: [text]
-        MORAL TENSION: [text]
-        THEMATIC TESTS:
-        - [test]
-        - [test]
+        Handles various formats including markdown formatting.
+        Looks for THEME STATEMENT, CORE CONFLICT, MORAL TENSION, and THEMATIC TESTS.
         """
         result = {
             'theme_statement': '',
@@ -30,28 +25,67 @@ class NarrativeParser:
             'thematic_tests': []
         }
         
-        # Extract theme statement
-        match = re.search(r'THEME\s+STATEMENT:\s*(.+?)(?=\n(?:CORE|$))', response, re.DOTALL)
-        if match:
-            result['theme_statement'] = match.group(1).strip()
+        # Normalize markdown formatting - remove **, ##, etc
+        normalized = response.replace('**', '').replace('##', '').replace('_', '')
         
-        # Extract core conflict
-        match = re.search(r'CORE\s+CONFLICT:\s*(.+?)(?=\n(?:MORAL|$))', response, re.DOTALL)
-        if match:
-            result['core_conflict'] = match.group(1).strip()
+        # Helper to find field value with flexible pattern matching
+        def extract_field(text, field_name, next_fields=None):
+            """Extract field value, stopping at next field or double newline."""
+            if next_fields is None:
+                next_fields = []
+            
+            # Try pattern: "FIELD NAME: value"
+            pattern = f"{field_name}\\s*:+\\s*(.+?)(?=\\n(?:{field_name}|{'|'.join(next_fields)}|\\n\\n|$))"
+            match = re.search(pattern, text, re.DOTALL | re.IGNORECASE)
+            if match:
+                value = match.group(1).strip()
+                # Clean up markdown, bullet points, and extra formatting
+                value = re.sub(r'^[*\-\s]+', '', value)
+                value = re.sub(r'\n[*\-]\s+', ' ', value)
+                return value
+            return ''
         
-        # Extract moral tension
-        match = re.search(r'MORAL\s+TENSION:\s*(.+?)(?=\n(?:THEMATIC|$))', response, re.DOTALL)
-        if match:
-            result['moral_tension'] = match.group(1).strip()
+        # Extract each field with fallbacks
+        result['theme_statement'] = extract_field(
+            normalized, 'THEME\\s+STATEMENT',
+            ['CORE\\s+CONFLICT', 'CORE\\s+TENSION', 'STORY\\s+PREMISE']
+        )
         
-        # Extract thematic tests
-        match = re.search(r'THEMATIC\s+TESTS:\s*(.+?)(?=\n\n|$)', response, re.DOTALL)
-        if match:
-            tests_text = match.group(1)
-            # Extract bullet points
-            tests = re.findall(r'^[-*]\s*(.+)$', tests_text, re.MULTILINE)
-            result['thematic_tests'] = [t.strip() for t in tests]
+        result['core_conflict'] = extract_field(
+            normalized, 'CORE\\s+CONFLICT',
+            ['MORAL\\s+TENSION', 'CENTRAL\\s+CONFLICT', 'CONFLICT']
+        )
+        
+        result['moral_tension'] = extract_field(
+            normalized, 'MORAL\\s+TENSION',
+            ['THEMATIC\\s+TESTS', 'ETHICAL\\s+DILEMMA', 'TESTS']
+        )
+        
+        # Extract thematic tests (list items) - more flexible pattern
+        tests_pattern = r'THEMATIC\s+TESTS:?\s*(.+?)(?=\n\n|$)'
+        tests_match = re.search(tests_pattern, normalized, re.DOTALL | re.IGNORECASE)
+        if tests_match:
+            tests_text = tests_match.group(1)
+            # Extract all bullet/numbered items
+            # Try bullet format first: "- item" or "* item"
+            tests = re.findall(r'^[\s]*[-*]\s+(.+?)$', tests_text, re.MULTILINE)
+            # Also try numbering format: "1. item"
+            if not tests:
+                tests = re.findall(r'^[\s]*\d+\.\s+(.+?)$', tests_text, re.MULTILINE)
+            # If still nothing, try to extract any line that's indented or starts with common markers
+            if not tests:
+                tests = re.findall(r'^[\s]{2,}(.+?)$', tests_text, re.MULTILINE)
+            # Clean up extracted tests
+            result['thematic_tests'] = [
+                re.sub(r'^[*\-_\s]+', '', t.strip())
+                for t in tests if t.strip() and len(t.strip()) > 5
+            ]
+        
+        # Fallback: if nothing extracted, try to find any substantial content
+        if not result['theme_statement'] and 'statement' in normalized.lower():
+            match = re.search(r'statement[:\s]+([^.\n]+(?:[.\n][^.\n]*)?)', normalized, re.IGNORECASE)
+            if match:
+                result['theme_statement'] = match.group(1).strip()
         
         return result
     
@@ -109,35 +143,41 @@ class NarrativeParser:
     
     @staticmethod
     def parse_scene_chain_response(response: str) -> List[Dict[str, str]]:
-        """Parse scene chain planning response.
+        """Parse scene chain planning response with robust extraction.
         
-        Expected format:
-        SCENE [number]: [Title]
-        Goal: [text]
-        Conflict: [text]
-        Outcome: [text]
-        Consequence: [text]
-        Next Trigger: [text]
-        ---
+        Handles various formats including markdown and flexible scene numbering.
+        Looks for SCENE [number], Scene [number], etc.
         """
         scenes = []
         
-        # Split by scene markers
-        scene_blocks = re.split(r'^SCENE\s+(\d+):\s*', response, flags=re.MULTILINE)
+        # Normalize markdown formatting
+        normalized = response.replace('**', '').replace('##', '').replace('_', '')
         
+        # Try multiple scene marker patterns
+        # Pattern 1: "SCENE 1: Title" or "Scene 1: Title"
+        scene_blocks = re.split(r'^[\s]*(?:SCENE|Scene)\s*[\#\.]*\s*(\d+)\s*[:.\-]*\s*', normalized, flags=re.MULTILINE | re.IGNORECASE)
+        
+        if len(scene_blocks) < 2:
+            # Pattern 2: "1. Title" or "### Scene 1 Title"
+            scene_blocks = re.split(r'^[\s]*(?:\d+[\.\)]\s+|###\s+Scene\s+\d+\s*[:.\-]*\s*)(.+?)$', normalized, flags=re.MULTILINE)
+        
+        # Process scene blocks
         for i in range(1, len(scene_blocks), 2):
             if i + 1 >= len(scene_blocks):
                 continue
             
             try:
-                scene_num = int(scene_blocks[i])
-                scene_content = scene_blocks[i + 1]
-            except (ValueError, IndexError):
+                scene_num_str = scene_blocks[i]
+                scene_num = int(re.search(r'\d+', scene_num_str).group() if re.search(r'\d+', scene_num_str) else i // 2)
+                scene_content = scene_blocks[i + 1] if i + 1 < len(scene_blocks) else ""
+            except (ValueError, IndexError, AttributeError):
                 continue
             
-            # Extract title (first line)
+            # Extract title (first non-empty line)
             lines = scene_content.strip().split('\n')
-            title = lines[0] if lines else ""
+            title = lines[0].strip() if lines else ""
+            if not title or title.startswith('Goal:') or title.startswith('Conflict:'):
+                title = f"Scene {scene_num}"
             
             scene_dict = {
                 'scene_number': scene_num,
@@ -149,16 +189,40 @@ class NarrativeParser:
                 'next_trigger': ''
             }
             
-            # Extract fields
-            content_text = '\n'.join(lines[1:])
+            # Extract fields with flexible patterns
+            content_text = '\n'.join(lines[1:]) if len(lines) > 1 else scene_content
             
-            for field in ['goal', 'conflict', 'outcome', 'consequence', 'next_trigger']:
-                pattern = rf'^{field.upper()}:\s*(.+?)(?=\n[A-Z]+:|---|\n\n|$)'
-                match = re.search(pattern, content_text, re.MULTILINE | re.DOTALL)
-                if match:
-                    scene_dict[field] = match.group(1).strip()
+            # Helper to extract field value
+            def extract_scene_field(text, field_name):
+                """Extract field value with flexible patterns."""
+                patterns = [
+                    rf'^[\s]*{field_name}\s*:\s*(.+?)(?=\n[\s]*(?:Goal|Conflict|Outcome|Consequence|Next|---)|$)',
+                    rf'{field_name}\s*:\s*(.+?)(?=\n[\s]*(?:Goal|Conflict|Outcome|Consequence|Next|---)|$)',
+                    rf'\*{field_name}\*\s*:\s*(.+?)(?=\n[\s]*\*|$)',
+                ]
+                for pattern in patterns:
+                    match = re.search(pattern, text, re.MULTILINE | re.DOTALL | re.IGNORECASE)
+                    if match:
+                        value = match.group(1).strip()
+                        # Clean markdown
+                        value = re.sub(r'^\*+', '', value).strip()
+                        value = re.sub(r'\*+$', '', value).strip()
+                        return value
+                return ''
             
-            scenes.append(scene_dict)
+            for field in ['goal', 'conflict', 'outcome', 'consequence']:
+                scene_dict[field] = extract_scene_field(content_text, field)
+            
+            # Try to extract next trigger/trigger variations
+            for trigger_name in ['next_trigger', 'next trigger', 'trigger']:
+                value = extract_scene_field(content_text, trigger_name)
+                if value:
+                    scene_dict['next_trigger'] = value
+                    break
+            
+            # Only add if we found at least one field populated
+            if any(scene_dict[k] for k in ['goal', 'conflict', 'outcome', 'consequence', 'next_trigger']):
+                scenes.append(scene_dict)
         
         return scenes
     
