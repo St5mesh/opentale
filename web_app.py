@@ -300,6 +300,7 @@ def extract_theme():
     
     try:
         book_agents = BookAgents(agent_config)
+        book_agents.create_agents(topic, 0)  # Initialize system prompts
         theme_data = book_agents.extract_theme(topic, world_theme)
         
         # Save theme to file
