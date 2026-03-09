@@ -33,6 +33,9 @@ def ensure_state_files_exist():
     Ensure all narrative state files exist. Creates defaults if missing.
     Enables backward compatibility with existing projects without state files.
     """
+    # Ensure directories exist
+    os.makedirs('book_output/chapters', exist_ok=True)
+    
     if not os.path.exists(StoryState.STATE_FILE):
         state = StoryState.initialize_story_state()
         StoryState.save_story_state(state)
