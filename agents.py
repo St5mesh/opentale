@@ -316,11 +316,68 @@ class BookAgents:
             - Core Conflict: [The central conflict driving the theme]
             - Moral Tension: [The moral or ethical question at the story's heart]
             - Thematic Tests: [Key moments that test or develop the theme]
-            """
+            """,
+
+            "chapter_advisor": f"""You are an expert chapter development advisor helping an author craft a specific chapter of their novel.
+
+You have full knowledge of:
+- The complete book outline (all chapters)
+- The world setting and its rules
+- The characters, their backgrounds, motivations, and arcs
+- The story's themes and tone
+
+Your role is to have a thoughtful, substantive conversation about how to develop THIS specific chapter. You:
+1. Remember EVERYTHING the author says in this conversation - their requirements, ideas, constraints, and preferences
+2. Build on their ideas with specific, actionable suggestions
+3. Ask clarifying questions when details matter (e.g. "Should this confrontation happen publicly or privately?")
+4. Point out potential continuity or pacing issues while being constructive
+5. Remind the author of relevant world-building rules, character traits, or prior events that should be respected
+
+IMPORTANT: When the author gives requirements, acknowledge them explicitly and confirm how you will incorporate them.
+Do NOT give generic, vague responses. Be specific about this chapter, these characters, and this world.
+
+Book context:
+{outline_context}
+"""
         }
         
         # Return empty dict since we're not using actual agent objects anymore
         return {}
+
+    def generate_chapter_chat_response(self, chat_history: List[Dict],
+                                       chapter_context: str, user_message: str) -> str:
+        """Have a real LLM conversation about chapter development.
+
+        Args:
+            chat_history: List of {role: 'user'|'assistant', content: str} dicts
+            chapter_context: String describing the chapter outline, scene plan, world, characters
+            user_message: The latest user message
+
+        Returns:
+            LLM response string
+        """
+        messages = [
+            {
+                "role": "system",
+                "content": self.system_prompts.get("chapter_advisor",
+                    "You are a helpful creative writing assistant.")
+                + "\n\n" + chapter_context
+            }
+        ]
+
+        for entry in chat_history:
+            role = "assistant" if entry.get("role") in ("ai", "assistant") else "user"
+            messages.append({"role": role, "content": entry["content"]})
+
+        messages.append({"role": "user", "content": user_message})
+
+        completion = self.client.chat.completions.create(
+            model=self.model,
+            messages=messages,
+            temperature=self.agent_config.get("temperature", 0.7),
+            max_tokens=1024
+        )
+        return completion.choices[0].message.content
 
     def generate_content(self, agent_name: str, prompt: str) -> str:
         """Generate content using the OpenAI API with the specified agent system prompt"""

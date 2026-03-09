@@ -147,11 +147,17 @@
                             <button type="button" class="btn btn-sm btn-outline-success w-100 mt-2" id="loadStateBtn">Load State</button>
                         </div>
                     </div>
+                    <div id="generatingIndicator" class="d-none">
+                    <div id="generatingMessage" class="text-muted small mb-1">Generating chapter content...</div>
+                    <div class="progress mb-2" style="height: 8px;">
+                        <div id="generatingProgressBar" class="progress-bar progress-bar-striped progress-bar-animated" 
+                             role="progressbar" style="width: 0%"></div>
+                    </div>
                     <div class="d-flex align-items-center">
                         <div class="spinner-border spinner-border-sm me-2" role="status">
                             <span class="visually-hidden">Loading...</span>
                         </div>
-                        <div>Generating chapter content... This may take several minutes.</div>
+                        <div id="generatingStatus">Starting...</div>
                     </div>
                 </div>
                 
@@ -191,125 +197,204 @@
 
 <script>
 $(document).ready(function() {
-    // Chat history
+    // Chat history (user + assistant messages)
     let chatHistory = [];
-    
-    // Send user message
-    $('#sendMessageBtn').click(function() {
-        sendUserMessage();
+
+    // ── Auto-bootstrap story state on page load ─────────────────────────────
+    $.ajax({
+        type: 'GET',
+        url: '/get_or_create_chapter_states/{{ chapter_number }}',
+        success: function(response) {
+            if (response.success && response.states) {
+                renderStoryState(response.states);
+                if (response.is_new) {
+                    console.log('Initial story state bootstrapped for chapter {{ chapter_number }}');
+                }
+            }
+        },
+        error: function() { /* silently ignore bootstrap errors */ }
     });
-    
-    // Also send message when user presses Enter
+
+    // ── Chat: send message on button click or Enter ─────────────────────────
+    $('#sendMessageBtn').click(function() { sendUserMessage(); });
     $('#userMessage').keypress(function(e) {
-        if (e.which === 13) {
-            sendUserMessage();
-            e.preventDefault();
-        }
+        if (e.which === 13) { sendUserMessage(); e.preventDefault(); }
     });
-    
+
     function sendUserMessage() {
         const message = $('#userMessage').val().trim();
         if (!message) return;
-        
-        // Add user message to chat
+
         addMessageToChat('user', message);
-        
-        // Clear input field
         $('#userMessage').val('');
-        
-        // Update chat history
         chatHistory.push({role: 'user', content: message});
-        
-        // For simplicity, we'll provide a standard response about using the input for chapter generation
-        const response = "Thanks for the input! I'll incorporate these details when you generate the chapter. Feel free to add more specific requirements or ask questions about the chapter development.";
-        
-        // Add AI response to chat after a short delay to simulate thinking
-        setTimeout(function() {
-            addMessageToChat('ai', response);
-            // Add to chat history
-            chatHistory.push({role: 'ai', content: response});
-        }, 500);
+
+        // Show typing indicator
+        const typingId = 'typing-' + Date.now();
+        addMessageToChat('system', 'Advisor is thinking...', typingId);
+
+        $.ajax({
+            type: 'POST',
+            url: '/chapter_chat/{{ chapter.chapter_number }}',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                message: message,
+                chat_history: chatHistory.slice(0, -1)  // exclude just-added user msg
+            }),
+            success: function(response) {
+                $('#' + typingId).remove();
+                if (response.response) {
+                    addMessageToChat('ai', response.response);
+                    chatHistory.push({role: 'assistant', content: response.response});
+                }
+            },
+            error: function() {
+                $('#' + typingId).remove();
+                addMessageToChat('system', 'Error getting response. Your note was saved and will be used during generation.');
+            }
+        });
     }
-    
-    // Generate or regenerate chapter
+
+    // ── Chapter generation via SSE ──────────────────────────────────────────
+    let generationSource = null;
+
     $('#generateChapterBtn, #regenerateChapterBtn').click(function() {
+        const btn = $(this);
+        btn.prop('disabled', true);
+        $('#generateChapterBtn, #regenerateChapterBtn').prop('disabled', true);
         $('#generatingIndicator').removeClass('d-none');
-        $(this).prop('disabled', true);
-        
-        // Get any additional context from chat
-        const additionalContext = chatHistory.length > 0 
-            ? "\n\nAdditional user requirements:\n" + 
-              chatHistory.filter(msg => msg.role === 'user')
-                        .map(msg => "- " + msg.content)
-                        .join("\n")
-            : "";
-        
+        updateProgress(0, 'Starting generation...');
+
+        // Build additional context from chat history
+        const additionalContext = chatHistory.filter(m => m.role === 'user')
+            .map(m => m.content).join('\n');
+
+        // POST to store context in session, then open SSE stream
         $.ajax({
             type: 'POST',
             url: '/chapter/{{ chapter.chapter_number }}',
             data: {
-                additional_context: additionalContext
+                additional_context: additionalContext,
+                chat_history: JSON.stringify(chatHistory)
             },
             success: function(response) {
-                $('#chapterContent').val(response.chapter_content);
-                $('#chapterContentContainer').removeClass('d-none');
-                $('#generatingIndicator').addClass('d-none');
-                $('#generateChapterBtn, #regenerateChapterBtn').prop('disabled', false);
-                
-                // Reset chat history after generating
-                chatHistory = [];
-                $('#chatMessages').html('<div class="text-center p-3"><p>Chapter has been generated! You can continue to add details or make changes to refine it further.</p></div>');
+                if (response.stream_url) {
+                    openGenerationStream(response.stream_url);
+                } else {
+                    generationFailed('Unexpected server response');
+                }
             },
             error: function() {
-                alert('Error generating chapter. Please try again.');
-                $('#generatingIndicator').addClass('d-none');
-                $('#generateChapterBtn, #regenerateChapterBtn').prop('disabled', false);
+                generationFailed('Failed to start generation');
             }
         });
     });
-    
-    // Add message to chat display
-    function addMessageToChat(sender, message) {
+
+    function openGenerationStream(streamUrl) {
+        if (generationSource) { generationSource.close(); }
+
+        generationSource = new EventSource(streamUrl);
+
+        generationSource.onmessage = function(event) {
+            try {
+                const data = JSON.parse(event.data);
+                handleGenerationEvent(data);
+            } catch(e) {
+                console.error('Failed to parse SSE event:', e);
+            }
+        };
+
+        generationSource.onerror = function() {
+            generationSource.close();
+            generationSource = null;
+            generationFailed('Connection lost during generation. The chapter may be partially written.');
+        };
+    }
+
+    function handleGenerationEvent(data) {
+        switch (data.type) {
+            case 'progress':
+                updateProgress(data.percent || 0, data.message);
+                break;
+            case 'scene_complete':
+                updateProgress(data.percent || 0, data.message);
+                break;
+            case 'state_updated':
+                updateProgress(data.percent || 0, data.message);
+                // Refresh story state panel
+                loadStoryState();
+                break;
+            case 'done':
+                generationSource.close();
+                generationSource = null;
+                updateProgress(100, 'Complete!');
+                setTimeout(function() {
+                    if (data.chapter_content) {
+                        $('#chapterContent').val(data.chapter_content);
+                        $('#chapterContentContainer').removeClass('d-none');
+                    }
+                    $('#generatingIndicator').addClass('d-none');
+                    $('#generateChapterBtn, #regenerateChapterBtn').prop('disabled', false);
+                    chatHistory = [];
+                    $('#chatMessages').html('<div class="text-center p-3"><p class="text-success">✓ Chapter generated from ' + data.message + '</p></div>');
+                    loadStoryState();
+                }, 500);
+                break;
+            case 'error':
+                generationSource && generationSource.close();
+                generationSource = null;
+                generationFailed(data.message || 'Unknown error');
+                break;
+        }
+    }
+
+    function updateProgress(percent, message) {
+        $('#generatingProgressBar').css('width', percent + '%').attr('aria-valuenow', percent);
+        $('#generatingStatus').text(message || '');
+    }
+
+    function generationFailed(msg) {
+        $('#generatingIndicator').addClass('d-none');
+        $('#generateChapterBtn, #regenerateChapterBtn').prop('disabled', false);
+        alert('Generation error: ' + msg);
+    }
+
+    // ── Add message to chat display ─────────────────────────────────────────
+    function addMessageToChat(sender, message, id) {
         const messageDiv = $('<div>').addClass('mb-3');
-        
+        if (id) messageDiv.attr('id', id);
+
         if (sender === 'user') {
             messageDiv.addClass('text-end');
-            const messageBubble = $('<div>').addClass('d-inline-block bg-primary text-white p-2 rounded-3')
-                                            .css('max-width', '80%')
-                                            .html(formatMessage(message));
-            messageDiv.append(messageBubble);
+            $('<div>').addClass('d-inline-block bg-primary text-white p-2 rounded-3')
+                      .css('max-width', '80%').html(formatMessage(message))
+                      .appendTo(messageDiv);
         } else if (sender === 'ai') {
             messageDiv.addClass('text-start');
-            const messageBubble = $('<div>').addClass('d-inline-block bg-light p-2 rounded-3')
-                                            .css('max-width', '80%')
-                                            .html(formatMessage(message));
-            messageDiv.append(messageBubble);
+            $('<div>').addClass('d-inline-block bg-light p-2 rounded-3')
+                      .css('max-width', '80%').html(formatMessage(message))
+                      .appendTo(messageDiv);
         } else {
-            // System message
             messageDiv.addClass('text-center');
-            const messageBubble = $('<div>').addClass('d-inline-block bg-warning p-2 rounded-3')
-                                            .text(message);
-            messageDiv.append(messageBubble);
+            $('<div>').addClass('d-inline-block bg-warning p-2 rounded-3 small')
+                      .text(message).appendTo(messageDiv);
         }
-        
+
         $('#chatMessages').append(messageDiv);
-        
-        // Scroll to bottom
         $('#chatMessages').scrollTop($('#chatMessages')[0].scrollHeight);
     }
-    
-    // Format message with line breaks
+
     function formatMessage(message) {
         return message.replace(/\n/g, '<br>');
     }
-    
-    // Save chapter
+
+    // ── Save chapter ────────────────────────────────────────────────────────
     $('#saveChapterForm').submit(function(e) {
         e.preventDefault();
         $('#savingIndicator').removeClass('d-none');
         $('#savedIndicator').addClass('d-none');
         $('#saveChapterBtn').prop('disabled', true);
-        
+
         $.ajax({
             type: 'POST',
             url: '/save_chapter/{{ chapter.chapter_number }}',
@@ -318,11 +403,7 @@ $(document).ready(function() {
                 $('#savingIndicator').addClass('d-none');
                 $('#savedIndicator').removeClass('d-none');
                 $('#saveChapterBtn').prop('disabled', false);
-                
-                // Hide the saved indicator after 3 seconds
-                setTimeout(function() {
-                    $('#savedIndicator').addClass('d-none');
-                }, 3000);
+                setTimeout(function() { $('#savedIndicator').addClass('d-none'); }, 3000);
             },
             error: function() {
                 alert('Error saving chapter. Please try again.');
@@ -331,81 +412,99 @@ $(document).ready(function() {
             }
         });
     });
-    
-    // Load and display story state
-    $('#loadStateBtn').click(function() {
-        $(this).prop('disabled', true);
-        $(this).text('Loading...');
-        
+
+    // ── Story state panel ───────────────────────────────────────────────────
+    function loadStoryState() {
+        $('#loadStateBtn').prop('disabled', true).text('Loading...');
+
         $.ajax({
             type: 'GET',
             url: '/get_story_state',
             dataType: 'json',
             success: function(response) {
                 if (response.success) {
-                    const state = response.state;
-                    let html = '';
-                    
-                    // Characters
-                    if (state.characters && Object.keys(state.characters).length > 0) {
-                        html += '<div class="mb-2"><strong>Characters:</strong><ul class="small mb-2">';
-                        Object.entries(state.characters).forEach(([name, info]) => {
-                            html += '<li><strong>' + name + '</strong>: ' + (info.status || 'unknown') + '</li>';
-                        });
-                        html += '</ul></div>';
-                    }
-                    
-                    // Artifacts
-                    if (state.artifacts && Object.keys(state.artifacts).length > 0) {
-                        html += '<div class="mb-2"><strong>Artifacts:</strong><ul class="small mb-2">';
-                        Object.entries(state.artifacts).forEach(([name, info]) => {
-                            html += '<li><strong>' + name + '</strong>: ' + (info.status || 'unknown');
-                            if (info.location) html += ' @ ' + info.location;
-                            html += '</li>';
-                        });
-                        html += '</ul></div>';
-                    }
-                    
-                    // World Elements
-                    if (state.world && Object.keys(state.world).length > 0) {
-                        html += '<div class="mb-2"><strong>World:</strong><ul class="small mb-2">';
-                        Object.entries(state.world).forEach(([name, info]) => {
-                            html += '<li><strong>' + name + '</strong>: ' + (info.status || 'unknown') + '</li>';
-                        });
-                        html += '</ul></div>';
-                    }
-                    
-                    // Plot Progress
-                    if (state.plot_progress) {
-                        html += '<div class="mb-2"><strong>Progress:</strong><br><small>';
-                        html += 'Completed Scenes: ' + (state.plot_progress.completed_scenes || 0) + '<br>';
-                        html += '</small></div>';
-                    }
-                    
-                    if (!html) {
-                        html = '<p class="text-muted text-center small">No story state recorded yet</p>';
-                    }
-                    
-                    $('#storyStateContent').html(html);
+                    renderStoryState(response.state);
                 } else {
                     $('#storyStateContent').html('<p class="text-danger small">Error loading state</p>');
                 }
-                
-                $('#loadStateBtn').prop('disabled', false);
-                $('#loadStateBtn').text('Load State');
+                $('#loadStateBtn').prop('disabled', false).text('Load State');
             },
             error: function() {
                 $('#storyStateContent').html('<p class="text-danger small">Error loading state</p>');
-                $('#loadStateBtn').prop('disabled', false);
-                $('#loadStateBtn').text('Load State');
+                $('#loadStateBtn').prop('disabled', false).text('Load State');
             }
         });
-    });
-    
-    // Refresh state button
-    $('#refreshStateBtn').click(function() {
-        $('#loadStateBtn').click();
-    });
+    }
+
+    function renderStoryState(state) {
+        let html = '';
+
+        if (state.characters && Object.keys(state.characters).length > 0) {
+            html += '<div class="mb-2"><strong>Characters:</strong>';
+            Object.entries(state.characters).forEach(([name, info]) => {
+                html += '<div class="ms-2 mb-1 border-start ps-2 small">';
+                html += '<strong>' + name + '</strong>: ' + (info.status || 'unknown');
+                if (info.location) html += '<br><span class="text-muted">📍 ' + info.location + '</span>';
+                if (info.faction) html += '<br><span class="text-muted">⚔ ' + info.faction + '</span>';
+                if (info.companions && info.companions.length) html += '<br><span class="text-muted">👥 With: ' + info.companions.join(', ') + '</span>';
+                if (info.goals && info.goals.length) html += '<br><span class="text-muted">🎯 ' + info.goals.join('; ') + '</span>';
+                if (info.inventory && info.inventory.length) html += '<br><span class="text-muted">🎒 ' + info.inventory.join(', ') + '</span>';
+                html += '</div>';
+            });
+            html += '</div>';
+        }
+
+        if (state.artifacts && Object.keys(state.artifacts).length > 0) {
+            html += '<div class="mb-2"><strong>Artifacts:</strong>';
+            Object.entries(state.artifacts).forEach(([name, info]) => {
+                html += '<div class="ms-2 mb-1 border-start ps-2 small">';
+                html += '<strong>' + name + '</strong>: ' + (info.status || 'unknown');
+                if (info.location) html += ' @ ' + info.location;
+                if (info.is_location_known === false) html += ' <em>(location hidden)</em>';
+                if (info.known_by && info.known_by.length) html += '<br><span class="text-muted">Known by: ' + info.known_by.join(', ') + '</span>';
+                if (info.owner) html += '<br><span class="text-muted">Owner: ' + info.owner + '</span>';
+                if (info.significance) html += '<br><span class="text-muted">' + info.significance + '</span>';
+                html += '</div>';
+            });
+            html += '</div>';
+        }
+
+        if (state.world && Object.keys(state.world).length > 0) {
+            html += '<div class="mb-2"><strong>World:</strong>';
+            Object.entries(state.world).forEach(([name, info]) => {
+                html += '<div class="ms-2 mb-1 border-start ps-2 small">';
+                html += '<strong>' + name + '</strong>: ' + (info.status || 'unknown');
+                if (info.political_status) html += '<br><span class="text-muted">⚖ ' + info.political_status + '</span>';
+                if (info.trend) html += '<br><span class="text-muted">📈 ' + info.trend + '</span>';
+                if (info.key_occupants && info.key_occupants.length) html += '<br><span class="text-muted">👑 ' + info.key_occupants.join(', ') + '</span>';
+                if (info.current_events && info.current_events.length) {
+                    info.current_events.forEach(function(ev) {
+                        html += '<br><span class="text-muted">📰 ' + ev + '</span>';
+                    });
+                }
+                html += '</div>';
+            });
+            html += '</div>';
+        }
+
+        if (state.plot_progress) {
+            html += '<div class="mb-2"><strong>Progress:</strong><br><small>';
+            html += 'Completed Scenes: ' + (state.plot_progress.completed_scenes || 0) + '<br>';
+            html += '</small></div>';
+        }
+
+        if (!html) {
+            html = '<p class="text-muted text-center small">No story state recorded yet</p>';
+        }
+
+        $('#storyStateContent').html(html);
+    }
+
+    $('#loadStateBtn').click(function() { loadStoryState(); });
+    $('#refreshStateBtn').click(function() { loadStoryState(); });
+
+    // ── Render state that was bootstrapped at page load (if any) ───────────
+    // Already handled by the auto-bootstrap AJAX call above.
 });
 </script>
 {% endblock %} 

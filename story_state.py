@@ -145,35 +145,73 @@ class StoryState:
             json.dump(theme, f, indent=2)
     
     @staticmethod
-    def add_character_state(state: Dict[str, Any], character_name: str, 
-                           status: str, developments: List[str] = None) -> None:
-        """Add or update character state in story state."""
+    def add_character_state(state: Dict[str, Any], character_name: str,
+                            status: str, developments: List[str] = None,
+                            location: str = None, companions: List[str] = None,
+                            faction: str = None, goals: List[str] = None,
+                            inventory: List[str] = None,
+                            relationships: Dict[str, str] = None,
+                            knowledge: List[str] = None,
+                            abilities: List[str] = None) -> None:
+        """Add or update character state in story state.
+
+        Preserves existing extra fields when updating an existing entry so that
+        a status-only update does not wipe location/goals/etc.
+        """
         if developments is None:
             developments = []
+        existing = state['characters'].get(character_name, {})
         state['characters'][character_name] = {
             'status': status,
             'developments': developments,
+            'location': location if location is not None else existing.get('location'),
+            'companions': companions if companions is not None else existing.get('companions', []),
+            'faction': faction if faction is not None else existing.get('faction'),
+            'goals': goals if goals is not None else existing.get('goals', []),
+            'inventory': inventory if inventory is not None else existing.get('inventory', []),
+            'relationships': relationships if relationships is not None else existing.get('relationships', {}),
+            'knowledge': knowledge if knowledge is not None else existing.get('knowledge', []),
+            'abilities': abilities if abilities is not None else existing.get('abilities', []),
             'last_updated': datetime.now().isoformat()
         }
-    
+
     @staticmethod
     def add_artifact_state(state: Dict[str, Any], artifact_name: str,
-                          status: str, location: str = None, owner: str = None) -> None:
+                           status: str, location: str = None, owner: str = None,
+                           is_location_known: bool = None, known_by: List[str] = None,
+                           significance: str = None, properties: List[str] = None) -> None:
         """Add or update artifact state in story state."""
+        existing = state['artifacts'].get(artifact_name, {})
         state['artifacts'][artifact_name] = {
             'status': status,
-            'location': location,
-            'owner': owner,
+            'location': location if location is not None else existing.get('location'),
+            'owner': owner if owner is not None else existing.get('owner'),
+            'is_location_known': is_location_known if is_location_known is not None else existing.get('is_location_known', True),
+            'known_by': known_by if known_by is not None else existing.get('known_by', []),
+            'significance': significance if significance is not None else existing.get('significance'),
+            'properties': properties if properties is not None else existing.get('properties', []),
             'last_updated': datetime.now().isoformat()
         }
-    
+
     @staticmethod
     def add_world_state(state: Dict[str, Any], element_name: str,
-                       status: str, details: str = None) -> None:
+                        status: str, details: str = None,
+                        element_type: str = None, inhabitants: List[str] = None,
+                        political_status: str = None, current_events: List[str] = None,
+                        key_occupants: List[str] = None, trend: str = None,
+                        public_opinion: str = None) -> None:
         """Add or update world element state in story state."""
+        existing = state['world'].get(element_name, {})
         state['world'][element_name] = {
             'status': status,
-            'details': details,
+            'details': details if details is not None else existing.get('details'),
+            'type': element_type if element_type is not None else existing.get('type'),
+            'inhabitants': inhabitants if inhabitants is not None else existing.get('inhabitants', []),
+            'political_status': political_status if political_status is not None else existing.get('political_status'),
+            'current_events': current_events if current_events is not None else existing.get('current_events', []),
+            'key_occupants': key_occupants if key_occupants is not None else existing.get('key_occupants', []),
+            'trend': trend if trend is not None else existing.get('trend'),
+            'public_opinion': public_opinion if public_opinion is not None else existing.get('public_opinion'),
             'last_updated': datetime.now().isoformat()
         }
     
@@ -260,11 +298,27 @@ class StoryState:
         for char_name, char_info in state.get('characters', {}).items():
             lines.append(f"\n**{char_name}**")
             lines.append(f"  - Status: {char_info.get('status', 'unknown')}")
+            if char_info.get('location'):
+                lines.append(f"  - Location: {char_info['location']}")
+            if char_info.get('faction'):
+                lines.append(f"  - Faction: {char_info['faction']}")
+            if char_info.get('companions'):
+                lines.append(f"  - With: {', '.join(char_info['companions'])}")
+            if char_info.get('goals'):
+                lines.append(f"  - Goals: {'; '.join(char_info['goals'])}")
+            if char_info.get('inventory'):
+                lines.append(f"  - Carrying: {', '.join(char_info['inventory'])}")
+            if char_info.get('relationships'):
+                for other, rel in char_info['relationships'].items():
+                    lines.append(f"  - {other}: {rel}")
+            if char_info.get('knowledge'):
+                for fact in char_info['knowledge']:
+                    lines.append(f"  - Knows: {fact}")
             if char_info.get('developments'):
                 for dev in char_info['developments']:
-                    lines.append(f"    - {dev}")
+                    lines.append(f"  - Development: {dev}")
         return "\n".join(lines)
-    
+
     @staticmethod
     def get_artifact_state_summary(state: Dict[str, Any]) -> str:
         """Generate a text summary of all artifact states for use in prompts."""
@@ -272,11 +326,21 @@ class StoryState:
         for artifact_name, artifact_info in state.get('artifacts', {}).items():
             lines.append(f"\n**{artifact_name}**")
             lines.append(f"  - Status: {artifact_info.get('status', 'unknown')}")
-            lines.append(f"  - Location: {artifact_info.get('location', 'unknown')}")
+            if artifact_info.get('location'):
+                lines.append(f"  - Location: {artifact_info['location']}")
+            loc_known = artifact_info.get('is_location_known')
+            if loc_known is not None:
+                lines.append(f"  - Location known: {'yes' if loc_known else 'no'}")
+            if artifact_info.get('known_by'):
+                lines.append(f"  - Known by: {', '.join(artifact_info['known_by'])}")
             if artifact_info.get('owner'):
                 lines.append(f"  - Owner: {artifact_info['owner']}")
+            if artifact_info.get('significance'):
+                lines.append(f"  - Significance: {artifact_info['significance']}")
+            if artifact_info.get('properties'):
+                lines.append(f"  - Properties: {', '.join(artifact_info['properties'])}")
         return "\n".join(lines)
-    
+
     @staticmethod
     def get_world_state_summary(state: Dict[str, Any]) -> str:
         """Generate a text summary of all world states for use in prompts."""
@@ -284,8 +348,23 @@ class StoryState:
         for element_name, element_info in state.get('world', {}).items():
             lines.append(f"\n**{element_name}**")
             lines.append(f"  - Status: {element_info.get('status', 'unknown')}")
+            if element_info.get('type'):
+                lines.append(f"  - Type: {element_info['type']}")
             if element_info.get('details'):
                 lines.append(f"  - Details: {element_info['details']}")
+            if element_info.get('political_status'):
+                lines.append(f"  - Political status: {element_info['political_status']}")
+            if element_info.get('trend'):
+                lines.append(f"  - Trend: {element_info['trend']}")
+            if element_info.get('public_opinion'):
+                lines.append(f"  - Public opinion: {element_info['public_opinion']}")
+            if element_info.get('key_occupants'):
+                lines.append(f"  - Key occupants: {', '.join(element_info['key_occupants'])}")
+            if element_info.get('inhabitants'):
+                lines.append(f"  - Inhabitants: {', '.join(element_info['inhabitants'])}")
+            if element_info.get('current_events'):
+                for event in element_info['current_events']:
+                    lines.append(f"  - Event: {event}")
         return "\n".join(lines)
     
     @staticmethod
@@ -384,77 +463,113 @@ class StoryState:
             return False
     
     @staticmethod
-    def apply_extracted_changes(state: Dict[str, Any], extracted_data: Dict[str, Any], 
-                               source: str = "extraction") -> Dict[str, Any]:
+    def apply_extracted_changes(state: Dict[str, Any], extracted_data: Dict[str, Any],
+                                source: str = "extraction") -> Dict[str, Any]:
         """
         Apply extracted story elements to story state (Phase 1 & 3).
-        
-        This method takes extracted data (from outline, characters, artifacts, world, theme, arcs)
-        and applies it to the story state, managing duplicates and updates.
-        
+
+        Handles two input formats:
+        1. Flat format (from initial state bootstrap):
+           {"name": "X", "status": "...", "location": "...", ...}
+        2. Scene-delta format (from STATE_EXTRACTION_PROMPT):
+           {"name": "X", "old_state": {...}, "new_state": {"status": "...", "location": "..."}, "events": [...]}
+
         Args:
             state: Current story state
-            extracted_data: Extracted data with keys: characters, artifacts, world_elements, theme, arcs
+            extracted_data: Extracted data with keys: characters, artifacts, world_elements/world, theme, arcs
             source: Source of extraction (outline, scene, etc.) for tracking
-        
+
         Returns:
             Updated story state
         """
+        def _flatten_char(char: Dict) -> Dict:
+            """Normalise scene-delta or flat character dict to flat form."""
+            if "new_state" in char:
+                flat = dict(char.get("new_state", {}))
+                flat["name"] = char.get("name", flat.get("name"))
+                if "events" in char:
+                    flat["developments"] = char["events"]
+                return flat
+            return char
+
+        def _flatten_artifact(artifact: Dict) -> Dict:
+            if "new_state" in artifact:
+                flat = dict(artifact.get("new_state", {}))
+                flat["name"] = artifact.get("name", flat.get("name"))
+                return flat
+            return artifact
+
+        def _flatten_world(element: Dict) -> Dict:
+            if "new_state" in element:
+                flat = {"status": element.get("new_state", element.get("old_state", "unknown"))}
+                if isinstance(flat["status"], dict):
+                    flat = dict(flat["status"])
+                flat["name"] = element.get("element", element.get("name", ""))
+                flat["details"] = element.get("event", element.get("details"))
+                return flat
+            # World elements sometimes use "element" as the name key
+            if "element" in element and "name" not in element:
+                element = dict(element)
+                element["name"] = element.pop("element")
+            return element
+
         # Apply character states
         if "characters" in extracted_data:
-            for char in extracted_data["characters"]:
+            for raw_char in extracted_data["characters"]:
+                char = _flatten_char(raw_char)
                 if char.get("name"):
                     StoryState.add_character_state(
                         state,
                         char["name"],
                         char.get("status", "unknown"),
-                        char.get("knowledge", [])
+                        char.get("developments", char.get("knowledge", [])),
+                        location=char.get("location"),
+                        companions=char.get("companions"),
+                        faction=char.get("faction"),
+                        goals=char.get("goals"),
+                        inventory=char.get("inventory"),
+                        relationships=char.get("relationships"),
+                        knowledge=char.get("knowledge"),
+                        abilities=char.get("abilities"),
                     )
-                    # Store additional attributes
-                    if char.get("name") in state["characters"]:
-                        state["characters"][char["name"]].update({
-                            "location": char.get("location"),
-                            "relationships": char.get("relationships", {}),
-                            "inventory": char.get("inventory", []),
-                            "abilities": char.get("abilities", [])
-                        })
-        
+
         # Apply artifact states
         if "artifacts" in extracted_data:
-            for artifact in extracted_data["artifacts"]:
+            for raw_artifact in extracted_data["artifacts"]:
+                artifact = _flatten_artifact(raw_artifact)
                 if artifact.get("name"):
                     StoryState.add_artifact_state(
                         state,
                         artifact["name"],
                         artifact.get("status", "unknown"),
-                        artifact.get("location"),
-                        artifact.get("owner")
+                        location=artifact.get("location"),
+                        owner=artifact.get("owner"),
+                        is_location_known=artifact.get("is_location_known"),
+                        known_by=artifact.get("known_by"),
+                        significance=artifact.get("significance"),
+                        properties=artifact.get("properties"),
                     )
-                    # Store additional attributes
-                    if artifact.get("name") in state["artifacts"]:
-                        state["artifacts"][artifact["name"]].update({
-                            "significance": artifact.get("significance"),
-                            "properties": artifact.get("properties", [])
-                        })
-        
-        # Apply world element states
-        if "world_elements" in extracted_data:
-            for element in extracted_data["world_elements"]:
-                if element.get("name"):
-                    StoryState.add_world_state(
-                        state,
-                        element["name"],
-                        element.get("status", "unknown"),
-                        element.get("description")
-                    )
-                    # Store additional attributes
-                    if element.get("name") in state["world"]:
-                        state["world"][element["name"]].update({
-                            "type": element.get("type"),
-                            "inhabitants": element.get("inhabitants", []),
-                            "significance": element.get("significance")
-                        })
-        
+
+        # Apply world element states (key may be "world_elements" or "world")
+        for key in ("world_elements", "world"):
+            if key in extracted_data and isinstance(extracted_data[key], list):
+                for raw_element in extracted_data[key]:
+                    element = _flatten_world(raw_element)
+                    if element.get("name"):
+                        StoryState.add_world_state(
+                            state,
+                            element["name"],
+                            element.get("status", "unknown"),
+                            details=element.get("details", element.get("description")),
+                            element_type=element.get("type"),
+                            inhabitants=element.get("inhabitants"),
+                            political_status=element.get("political_status"),
+                            current_events=element.get("current_events"),
+                            key_occupants=element.get("key_occupants"),
+                            trend=element.get("trend"),
+                            public_opinion=element.get("public_opinion"),
+                        )
+
         # Apply theme
         if "theme" in extracted_data and extracted_data["theme"]:
             theme_data = extracted_data["theme"]
@@ -466,7 +581,7 @@ class StoryState:
                 "world_conflict": theme_data.get("world_conflict"),
                 "extracted_at": datetime.now().isoformat()
             }
-        
+
         # Apply character arcs
         if "character_arcs" in extracted_data:
             if "arcs" not in state:
@@ -480,15 +595,13 @@ class StoryState:
                         "key_moments": arc.get("key_moments", []),
                         "current_stage": 0
                     }
-        
+
         # Update metadata
-        if "last_extraction" not in state:
-            state["last_extraction"] = {}
         state["last_extraction"] = {
             "source": source,
             "timestamp": datetime.now().isoformat()
         }
-        
+
         return state
     
     @staticmethod
