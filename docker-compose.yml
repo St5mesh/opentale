@@ -28,6 +28,7 @@ services:
       - ollama
     volumes:
       - ./book_output:/app/book_output
+      - ./projects:/app/projects
     environment:
       - FLASK_ENV=production
       - LLM_URL=http://ollama:11434/v1
