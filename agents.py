@@ -265,6 +265,41 @@ class BookAgents:
             IMPORTANT: This is a brainstorming conversation. DO NOT generate the formal outline until the author is ready to finalize.
             
             The book has {num_chapters} chapters total, but during this chat focus on story elements, not chapter structure.
+            """,
+            
+            # Scene chain planning agent
+            "scene_planner": f"""You are an expert at breaking down story outlines into individual causal scenes.
+            
+            Your responsibility is to:
+            1. Analyze the story outline
+            2. Identify key scenes and their narrative purpose
+            3. Map scene causality (how each scene leads to the next)
+            4. Define clear scene goals, conflicts, and outcomes
+            
+            For each scene, provide:
+            - Scene number and title
+            - Scene goal (what the character/story needs to accomplish)
+            - Scene conflict (the obstacle or challenge)
+            - Scene outcome (what actually happens)
+            - Consequence (how it affects the next scene)
+            
+            Format your response as a structured list of scenes with clear transitions between them.
+            """,
+            
+            # State extraction agent for Phase 1+
+            "state_extractor": f"""You are an expert at analyzing narrative content and extracting structured story state.
+            
+            Your responsibilities:
+            1. Extract character states, artifacts, world elements, and themes from narrative descriptions
+            2. Provide structured JSON-formatted responses
+            3. Identify all relevant entities mentioned in the text
+            4. Capture current status, location, ownership, and significance for each entity
+            
+            CRITICAL: Always respond with valid JSON format.
+            Your response MUST be valid JSON that can be parsed by a JSON parser.
+            Do not include any text outside the JSON structure.
+            
+            Format your response as pure JSON with no additional text.
             """
         }
         
@@ -870,3 +905,234 @@ Format it as a properly structured outline with clear chapter sections and event
         
         # Parse response using robust parser
         return NarrativeParser.parse_state_update_response(response)
+    
+    def extract_character_initial_states(self, characters: str, theme: str) -> Dict:
+        """Extract initial character states at outline finalization (Phase 1, Stage 1).
+        
+        Args:
+            characters: Character descriptions
+            theme: Story theme
+        
+        Returns:
+            Dict with character initial states
+        """
+        import json
+        import prompts
+        
+        prompt = prompts.CHARACTER_INITIAL_STATE_PROMPT.format(
+            characters=characters,
+            theme=theme
+        )
+        
+        response = self.generate_content("state_extractor", prompt)
+        
+        # Extract JSON from response
+        try:
+            start = response.find('{')
+            end = response.rfind('}') + 1
+            if start != -1 and end > start:
+                json_str = response[start:end]
+                return json.loads(json_str)
+        except (json.JSONDecodeError, ValueError):
+            pass
+        
+        return {"characters": []}
+    
+    def extract_artifacts_from_world(self, world_theme: str, characters: str) -> Dict:
+        """Extract artifacts from world and character descriptions (Phase 1, Stage 1).
+        
+        Args:
+            world_theme: World description
+            characters: Character descriptions
+        
+        Returns:
+            Dict with artifact states
+        """
+        import json
+        import prompts
+        
+        prompt = prompts.ARTIFACT_EXTRACTION_PROMPT.format(
+            world_theme=world_theme,
+            characters=characters
+        )
+        
+        response = self.generate_content("state_extractor", prompt)
+        
+        try:
+            start = response.find('{')
+            end = response.rfind('}') + 1
+            if start != -1 and end > start:
+                json_str = response[start:end]
+                return json.loads(json_str)
+        except (json.JSONDecodeError, ValueError):
+            pass
+        
+        return {"artifacts": []}
+    
+    def extract_world_elements(self, world_theme: str, outline: str) -> Dict:
+        """Extract world elements from world and outline (Phase 1, Stage 1).
+        
+        Args:
+            world_theme: World description
+            outline: Story outline
+        
+        Returns:
+            Dict with world element states
+        """
+        import json
+        import prompts
+        
+        prompt = prompts.WORLD_ELEMENTS_EXTRACTION_PROMPT.format(
+            world_theme=world_theme,
+            outline=outline
+        )
+        
+        response = self.generate_content("state_extractor", prompt)
+        
+        try:
+            start = response.find('{')
+            end = response.rfind('}') + 1
+            if start != -1 and end > start:
+                json_str = response[start:end]
+                return json.loads(json_str)
+        except (json.JSONDecodeError, ValueError):
+            pass
+        
+        return {"world_elements": []}
+    
+    def extract_theme_from_outline(self, outline: str) -> Dict:
+        """Extract theme from outline (Phase 1, Stage 1).
+        
+        Args:
+            outline: Story outline
+        
+        Returns:
+            Dict with theme extraction
+        """
+        import json
+        import prompts
+        
+        prompt = prompts.THEME_EXTRACTION_PROMPT_DETAILED.format(
+            outline=outline
+        )
+        
+        response = self.generate_content("state_extractor", prompt)
+        
+        try:
+            start = response.find('{')
+            end = response.rfind('}') + 1
+            if start != -1 and end > start:
+                json_str = response[start:end]
+                return json.loads(json_str)
+        except (json.JSONDecodeError, ValueError):
+            pass
+        
+        return {"theme": {}}
+    
+    def extract_character_arcs(self, outline: str, characters: str) -> Dict:
+        """Extract character arcs from outline (Phase 1, Stage 1).
+        
+        Args:
+            outline: Story outline
+            characters: Character descriptions
+        
+        Returns:
+            Dict with character arc information
+        """
+        import json
+        import prompts
+        
+        prompt = prompts.CHARACTER_ARCS_EXTRACTION_PROMPT.format(
+            outline=outline,
+            characters=characters
+        )
+        
+        response = self.generate_content("state_extractor", prompt)
+        
+        try:
+            start = response.find('{')
+            end = response.rfind('}') + 1
+            if start != -1 and end > start:
+                json_str = response[start:end]
+                return json.loads(json_str)
+        except (json.JSONDecodeError, ValueError):
+            pass
+        
+        return {"character_arcs": []}
+    
+    def plan_chapter_scene_chain(self, chapter_num: int, chapter_outline: str, 
+                                 current_state: str) -> Dict:
+        """
+        Generate per-chapter scene chain on-demand (Phase 2, Stage 2).
+        
+        This method is called when user opens a chapter for editing, generating
+        a contextual scene chain for that specific chapter based on current story state.
+        
+        Args:
+            chapter_num: Chapter number
+            chapter_outline: The outline for this specific chapter
+            current_state: Summary of current story state
+        
+        Returns:
+            Dict with chapter scenes
+        """
+        import json
+        import prompts
+        
+        prompt = prompts.CHAPTER_SCENE_CHAIN_PROMPT.format(
+            chapter_outline=chapter_outline,
+            current_state=current_state
+        )
+        
+        response = self.generate_content("scene_planner", prompt)
+        
+        try:
+            start = response.find('{')
+            end = response.rfind('}') + 1
+            if start != -1 and end > start:
+                json_str = response[start:end]
+                return json.loads(json_str)
+        except (json.JSONDecodeError, ValueError):
+            pass
+        
+        return {"chapter": chapter_num, "scenes": []}
+    
+    def extract_scene_state_changes(self, scene_content: str, current_state: str) -> Dict:
+        """
+        Extract story state changes from a generated scene (Phase 3, Stage 3).
+        
+        This method is called after scene generation to automatically extract:
+        - Character state changes
+        - Artifact changes
+        - World element changes
+        
+        Args:
+            scene_content: The generated scene text
+            current_state: Summary of story state before this scene
+        
+        Returns:
+            Dict with extracted state changes
+        """
+        import json
+        import prompts
+        
+        # Limit scene content to first 3000 chars for efficiency
+        scene_preview = scene_content[:3000] + "..." if len(scene_content) > 3000 else scene_content
+        
+        prompt = prompts.STATE_EXTRACTION_PROMPT.format(
+            scene_content=scene_preview,
+            current_state=current_state
+        )
+        
+        response = self.generate_content("state_extractor", prompt)
+        
+        try:
+            start = response.find('{')
+            end = response.rfind('}') + 1
+            if start != -1 and end > start:
+                json_str = response[start:end]
+                return json.loads(json_str)
+        except (json.JSONDecodeError, ValueError):
+            pass
+        
+        return {"characters": [], "artifacts": [], "world": []}

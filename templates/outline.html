@@ -112,8 +112,9 @@
                         <label for="outlineContent" class="form-label">Edit your book outline if needed:</label>
                         <textarea class="form-control" id="outlineContent" name="outline" rows="20">{{ outline }}</textarea>
                     </div>
-                    <div class="d-flex justify-content-between">
+                    <div class="d-flex justify-content-between gap-2">
                         <button type="submit" class="btn btn-success" id="saveOutlineBtn">Save Changes</button>
+                        <button type="button" class="btn btn-info" id="finalizeOutlineWithStatesBtn">Finalize & Generate States</button>
                         {% if chapters %}
                         <a href="/chapter/1" class="btn btn-primary">Start Writing Chapter 1</a>
                         {% endif %}
@@ -491,6 +492,39 @@ $(document).ready(function() {
         });
     });
     
+    // Finalize outline with state extraction (Phase 1)
+    $('#finalizeOutlineWithStatesBtn').click(function() {
+        $(this).prop('disabled', true);
+        const originalText = $(this).text();
+        $(this).text('Generating States...');
+        
+        $.ajax({
+            type: 'POST',
+            url: '/finalize_outline_with_states',
+            contentType: 'application/json',
+            success: function(response) {
+                if (response.success) {
+                    alert('✓ Outline finalized!\n\n' +
+                          'Extracted State Summary:\n' +
+                          '- Characters: ' + response.extracted.characters + '\n' +
+                          '- Artifacts: ' + response.extracted.artifacts + '\n' +
+                          '- World Elements: ' + response.extracted.world_elements + '\n' +
+                          '- Theme: ' + (response.extracted.has_theme ? 'Yes' : 'No') + '\n' +
+                          '- Character Arcs: ' + (response.extracted.has_arcs ? 'Yes' : 'No'));
+                } else {
+                    alert('Error: ' + response.error);
+                }
+            },
+            error: function(xhr) {
+                alert('Error finalizing outline: ' + (xhr.responseJSON?.error || 'Unknown error'));
+            },
+            complete: function() {
+                $('#finalizeOutlineWithStatesBtn').prop('disabled', false);
+                $('#finalizeOutlineWithStatesBtn').text(originalText);
+            }
+        });
+    });
+    
     // Show scene chain container when outline is finalized
     $(document).ready(function() {
         if ($('#outlineContent').val().length > 0) {
@@ -566,4 +600,7 @@ $(document).ready(function() {
     // Plan scene chain again
     $('#planSceneChainAgainBtn').click(function() {
         $('#planSceneChainBtn').click();
-    }); 
+    });
+});
+</script>
+{% endblock %}

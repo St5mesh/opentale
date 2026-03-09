@@ -374,3 +374,143 @@ class StoryState:
         except IOError as e:
             print(f"Error saving {filepath}: {e}")
             return False
+    
+    @staticmethod
+    def apply_extracted_changes(state: Dict[str, Any], extracted_data: Dict[str, Any], 
+                               source: str = "extraction") -> Dict[str, Any]:
+        """
+        Apply extracted story elements to story state (Phase 1 & 3).
+        
+        This method takes extracted data (from outline, characters, artifacts, world, theme, arcs)
+        and applies it to the story state, managing duplicates and updates.
+        
+        Args:
+            state: Current story state
+            extracted_data: Extracted data with keys: characters, artifacts, world_elements, theme, arcs
+            source: Source of extraction (outline, scene, etc.) for tracking
+        
+        Returns:
+            Updated story state
+        """
+        # Apply character states
+        if "characters" in extracted_data:
+            for char in extracted_data["characters"]:
+                if char.get("name"):
+                    StoryState.add_character_state(
+                        state,
+                        char["name"],
+                        char.get("status", "unknown"),
+                        char.get("knowledge", [])
+                    )
+                    # Store additional attributes
+                    if char.get("name") in state["characters"]:
+                        state["characters"][char["name"]].update({
+                            "location": char.get("location"),
+                            "relationships": char.get("relationships", {}),
+                            "inventory": char.get("inventory", []),
+                            "abilities": char.get("abilities", [])
+                        })
+        
+        # Apply artifact states
+        if "artifacts" in extracted_data:
+            for artifact in extracted_data["artifacts"]:
+                if artifact.get("name"):
+                    StoryState.add_artifact_state(
+                        state,
+                        artifact["name"],
+                        artifact.get("status", "unknown"),
+                        artifact.get("location"),
+                        artifact.get("owner")
+                    )
+                    # Store additional attributes
+                    if artifact.get("name") in state["artifacts"]:
+                        state["artifacts"][artifact["name"]].update({
+                            "significance": artifact.get("significance"),
+                            "properties": artifact.get("properties", [])
+                        })
+        
+        # Apply world element states
+        if "world_elements" in extracted_data:
+            for element in extracted_data["world_elements"]:
+                if element.get("name"):
+                    StoryState.add_world_state(
+                        state,
+                        element["name"],
+                        element.get("status", "unknown"),
+                        element.get("description")
+                    )
+                    # Store additional attributes
+                    if element.get("name") in state["world"]:
+                        state["world"][element["name"]].update({
+                            "type": element.get("type"),
+                            "inhabitants": element.get("inhabitants", []),
+                            "significance": element.get("significance")
+                        })
+        
+        # Apply theme
+        if "theme" in extracted_data and extracted_data["theme"]:
+            theme_data = extracted_data["theme"]
+            state["theme"] = {
+                "statement": theme_data.get("statement"),
+                "core_conflict": theme_data.get("core_conflict"),
+                "moral_tension": theme_data.get("moral_tension"),
+                "character_conflict": theme_data.get("character_conflict"),
+                "world_conflict": theme_data.get("world_conflict"),
+                "extracted_at": datetime.now().isoformat()
+            }
+        
+        # Apply character arcs
+        if "character_arcs" in extracted_data:
+            if "arcs" not in state:
+                state["arcs"] = {}
+            for arc in extracted_data["character_arcs"]:
+                if arc.get("name"):
+                    state["arcs"][arc["name"]] = {
+                        "starting_state": arc.get("starting_state"),
+                        "arc_stages": arc.get("arc_stages", []),
+                        "final_state": arc.get("final_state"),
+                        "key_moments": arc.get("key_moments", []),
+                        "current_stage": 0
+                    }
+        
+        # Update metadata
+        if "last_extraction" not in state:
+            state["last_extraction"] = {}
+        state["last_extraction"] = {
+            "source": source,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        return state
+    
+    @staticmethod
+    def get_story_position() -> Dict[str, Any]:
+        """
+        Get the current position in the story (current chapter and scene).
+        
+        Returns:
+            Dict with current_chapter and current_scene
+        """
+        state = StoryState.load_story_state()
+        progress = state.get("plot_progress", {})
+        return {
+            "current_chapter": progress.get("current_chapter", 0),
+            "current_scene": progress.get("current_scene", 0),
+            "completed_scenes": progress.get("completed_scenes", 0)
+        }
+    
+    @staticmethod
+    def validate_character_presence(state: Dict[str, Any], character_names: List[str]) -> bool:
+        """
+        Validate that all mentioned characters exist in story state.
+        
+        Args:
+            state: Story state
+            character_names: List of character names to validate
+        
+        Returns:
+            True if all characters exist, False otherwise
+        """
+        existing_chars = set(state.get("characters", {}).keys())
+        required_chars = set(character_names)
+        return required_chars.issubset(existing_chars)

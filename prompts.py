@@ -331,4 +331,299 @@ Write an immersive, detailed scene that:
 7. Is approximately 2000-3000 words
 
 Write the scene now:
+"""
+
+
+# ============================================================================
+# PHASE 1: INITIAL STATE EXTRACTION PROMPTS
+# ============================================================================
+
+CHARACTER_INITIAL_STATE_PROMPT = """
+Based on these character descriptions:
+
+{characters}
+
+And the story theme:
+{theme}
+
+Extract the initial state for each character. For each character provide:
+
+1. NAME: Character's name
+2. STATUS: Initial status (e.g., "unaware", "confident", "grieving", "learning")
+3. LOCATION: Starting location
+4. KNOWLEDGE: What they know at the start
+5. RELATIONSHIPS: Initial relationships with other characters
+6. INVENTORY/ARTIFACTS: Any items they start with
+7. ABILITIES: Skills or powers they possess
+
+Format as JSON:
+{{
+  "characters": [
+    {{
+      "name": "Character Name",
+      "status": "initial status",
+      "location": "starting location",
+      "knowledge": ["fact 1", "fact 2"],
+      "relationships": {{"Other Character": "relationship type"}},
+      "inventory": ["item1", "item2"],
+      "abilities": ["ability1", "ability2"]
+    }}
+  ]
+}}
+
+Extract initial state for all characters now:
+"""
+
+ARTIFACT_EXTRACTION_PROMPT = """
+Based on the world description:
+
+{world_theme}
+
+And the characters:
+
+{characters}
+
+Identify all important artifacts (magical items, weapons, keys, documents, etc.) that exist in the story world.
+
+For each artifact provide:
+
+1. NAME: Artifact name
+2. STATUS: Current status (e.g., "hidden", "active", "dormant", "destroyed")
+3. LOCATION: Where it currently is
+4. OWNER: Who possesses it
+5. SIGNIFICANCE: Why it matters to the story
+6. PROPERTIES: What it does or what makes it special
+
+Format as JSON:
+{{
+  "artifacts": [
+    {{
+      "name": "Artifact Name",
+      "status": "current status",
+      "location": "location",
+      "owner": "character or 'unowned'",
+      "significance": "why it matters",
+      "properties": ["property1", "property2"]
+    }}
+  ]
+}}
+
+Extract artifacts now:
+"""
+
+WORLD_ELEMENTS_EXTRACTION_PROMPT = """
+Based on the world setting:
+
+{world_theme}
+
+And the story outline:
+
+{outline}
+
+Identify all major world elements (locations, factions, institutions, natural features, etc.) that define the story world.
+
+For each element provide:
+
+1. NAME: Element name
+2. TYPE: Type of element (location, faction, institution, natural_feature, etc.)
+3. STATUS: Current status (active, dormant, sealed, destroyed, etc.)
+4. DESCRIPTION: Key characteristics
+5. INHABITANTS: Who/what exists there
+6. SIGNIFICANCE: Why it matters to the story
+
+Format as JSON:
+{{
+  "world_elements": [
+    {{
+      "name": "Element Name",
+      "type": "element type",
+      "status": "current status",
+      "description": "key characteristics",
+      "inhabitants": ["inhabitant1", "inhabitant2"],
+      "significance": "why it matters"
+    }}
+  ]
+}}
+
+Extract world elements now:
+"""
+
+THEME_EXTRACTION_PROMPT_DETAILED = """
+Based on the story outline:
+
+{outline}
+
+Extract the core theme and central conflicts of this story.
+
+Provide:
+
+1. THEME_STATEMENT: One sentence capturing the story's main theme
+2. CORE_CONFLICT: The central tension that drives the narrative
+3. MORAL_TENSION: The ethical dilemma at the heart of the story
+4. CHARACTER_CONFLICT: How this theme plays out through character development
+5. WORLD_CONFLICT: How this theme manifests in world events/changes
+
+Format as JSON:
+{{
+  "theme": {{
+    "statement": "theme statement",
+    "core_conflict": "central tension",
+    "moral_tension": "ethical dilemma",
+    "character_conflict": "how characters embody this",
+    "world_conflict": "how world embodies this"
+  }}
+}}
+
+Extract theme now:
+"""
+
+CHARACTER_ARCS_EXTRACTION_PROMPT = """
+Based on the outline:
+
+{outline}
+
+And the characters:
+
+{characters}
+
+Define the character arc stages for each main character.
+
+For each character provide:
+
+1. NAME: Character name
+2. STARTING_STATE: Psychological/emotional starting point
+3. ARC_STAGES: 4-5 development stages through the story
+4. FINAL_STATE: Where they end after transformation
+5. KEY_MOMENTS: Which chapters trigger each stage
+
+Format as JSON:
+{{
+  "character_arcs": [
+    {{
+      "name": "Character Name",
+      "starting_state": "initial state description",
+      "arc_stages": [
+        "Stage 1: description",
+        "Stage 2: description",
+        "Stage 3: description",
+        "Stage 4: description"
+      ],
+      "final_state": "final state after transformation",
+      "key_moments": [
+        {{"stage": 1, "chapter": "X", "event": "description"}},
+        {{"stage": 2, "chapter": "X", "event": "description"}}
+      ]
+    }}
+  ]
+}}
+
+Extract character arcs now:
+"""
+
+
+# ============================================================================
+# PHASE 2: PER-CHAPTER SCENE CHAIN GENERATION
+# ============================================================================
+
+CHAPTER_SCENE_CHAIN_PROMPT = """
+Based on the chapter outline:
+
+{chapter_outline}
+
+And the current story state:
+
+{current_state}
+
+Generate a detailed scene chain for this chapter. Break it down into 4-8 individual scenes.
+
+For each scene provide:
+
+1. SCENE_NUMBER: Sequential number for this chapter (1, 2, 3, etc.)
+2. TITLE: Scene title
+3. GOAL: What must happen in this scene
+4. CONFLICT: What opposes achieving the goal
+5. OUTCOME: How the scene resolves
+6. CHARACTERS_PRESENT: Which characters appear in this scene
+7. PREREQUISITES: What must be true before this scene (character states, artifacts, locations)
+8. CONSEQUENCE: What changes as a result of this scene
+
+Format as JSON:
+{{
+  "chapter": X,
+  "scenes": [
+    {{
+      "scene_number": 1,
+      "title": "Scene title",
+      "goal": "what must happen",
+      "conflict": "what opposes it",
+      "outcome": "how it resolves",
+      "characters_present": ["Character1", "Character2"],
+      "prerequisites": {{
+        "character_states": {{"Character1": "status needed"}},
+        "artifacts_needed": ["Artifact1"],
+        "location": "Location name"
+      }},
+      "consequence": "what changes"
+    }}
+  ]
+}}
+
+Generate the scene chain now:
+"""
+
+
+# ============================================================================
+# PHASE 3: SCENE STATE EXTRACTION AND AUTO-APPLICATION
+# ============================================================================
+
+STATE_EXTRACTION_PROMPT = """
+Based on the scene that was just generated:
+
+{scene_content}
+
+And the current story state before this scene:
+
+{current_state}
+
+Extract the story state CHANGES that occurred in this scene.
+
+Identify:
+1. CHARACTER CHANGES: How did each character change (status, knowledge, relationships)?
+2. ARTIFACT CHANGES: Any changes to magical items, weapons, or key objects?
+3. WORLD CHANGES: Any changes to locations, factions, or world state?
+
+For each change, specify:
+- OLD STATE: What was the state before
+- NEW STATE: What is the state now
+- EVENT: What in the scene caused this change
+
+Format as JSON:
+{{
+  "characters": [
+    {{
+      "name": "Character Name",
+      "old_state": {{"status": "old status", "location": "old location"}},
+      "new_state": {{"status": "new status", "location": "new location"}},
+      "events": ["event1 causing change", "event2 causing change"]
+    }}
+  ],
+  "artifacts": [
+    {{
+      "name": "Artifact Name",
+      "old_state": {{"status": "old", "owner": "old owner"}},
+      "new_state": {{"status": "new", "owner": "new owner"}},
+      "event": "what happened in the scene"
+    }}
+  ],
+  "world": [
+    {{
+      "element": "Element Name",
+      "old_state": "old state",
+      "new_state": "new state",
+      "event": "what changed"
+    }}
+  ]
+}}
+
+Extract state changes now (return only valid JSON):
 """ 

@@ -3,6 +3,7 @@ Flask web application for OpenTale
 """
 import os
 import json
+import sys
 from flask import Flask, render_template, request, jsonify, session, Response, stream_with_context, flash, redirect
 from config import get_config, get_narrative_config
 from agents import BookAgents
@@ -21,6 +22,10 @@ os.makedirs('book_output/chapters', exist_ok=True)
 # Initialize global variables
 agent_config = get_config()
 narrative_config = get_narrative_config()
+
+# Startup logging
+print("[OpenTale] Flask app initializing...", file=sys.stderr)
+print(f"[OpenTale] LLM URL: {agent_config.get('base_url', 'http://ollama:11434/v1')}", file=sys.stderr)
 
 
 def ensure_state_files_exist():
@@ -68,6 +73,20 @@ def validate_all_state_files():
         StoryState.save_scene_chain(chain)
     
     return report['overall_valid'], report
+
+@app.before_request
+def startup_check():
+    """Initialize state files and log startup"""
+    if not hasattr(app, 'startup_done'):
+        print("[OpenTale] First request - initializing...", file=sys.stderr)
+        try:
+            if narrative_config.get('state_tracking_enabled', False):
+                ensure_state_files_exist()
+            print("[OpenTale] ✓ State files initialized", file=sys.stderr)
+        except Exception as e:
+            print(f"[OpenTale] ⚠ State initialization warning: {e}", file=sys.stderr)
+        app.startup_done = True
+        print("[OpenTale] ✓ Flask app ready on http://0.0.0.0:5000", file=sys.stderr)
 
 @app.route('/')
 def index():
@@ -316,6 +335,7 @@ def plan_scene_chain():
     
     try:
         book_agents = BookAgents(agent_config)
+        book_agents.create_agents("", 10)  # Initialize agents with empty prompt and default chapters
         scenes = book_agents.plan_scene_chain(outline)
         
         # Save scene chain to file
@@ -549,6 +569,171 @@ def save_outline():
     
     return jsonify({'success': True, 'num_chapters': len(chapters)})
 
+@app.route('/finalize_outline_with_states', methods=['POST'])
+def finalize_outline_with_states():
+    """
+    Finalize outline and generate initial story states (Phase 1, Stage 1).
+    
+    This endpoint:
+    1. Takes the current outline, characters, and world
+    2. Extracts initial character states
+    3. Extracts artifact states
+    4. Extracts world element states
+    5. Extracts theme
+    6. Extracts character arcs
+    7. Saves all to story state files
+    
+    Returns: JSON with success/error and extracted state summary
+    """
+    try:
+        # Get required files
+        if not os.path.exists('book_output/outline.txt'):
+            return jsonify({'error': 'Outline not found'}), 400
+        if not os.path.exists('book_output/characters.txt'):
+            return jsonify({'error': 'Characters not found'}), 400
+        if not os.path.exists('book_output/world.txt'):
+            return jsonify({'error': 'World not found'}), 400
+        
+        # Load content
+        with open('book_output/outline.txt', 'r') as f:
+            outline = f.read()
+        with open('book_output/characters.txt', 'r') as f:
+            characters = f.read()
+        with open('book_output/world.txt', 'r') as f:
+            world_theme = f.read()
+        
+        # Initialize BookAgents for extraction
+        book_agents = BookAgents(agent_config)
+        book_agents.create_agents('', 10)
+        
+        # Extract all story elements (in parallel would be better, but doing sequentially for now)
+        extracted_chars = book_agents.extract_character_initial_states(characters, "Story theme")
+        extracted_artifacts = book_agents.extract_artifacts_from_world(world_theme, characters)
+        extracted_world = book_agents.extract_world_elements(world_theme, outline)
+        extracted_theme = book_agents.extract_theme_from_outline(outline)
+        extracted_arcs = book_agents.extract_character_arcs(outline, characters)
+        
+        # Combine all extractions
+        all_extracted = {
+            **extracted_chars,
+            **extracted_artifacts,
+            **extracted_world,
+            **extracted_theme,
+            **extracted_arcs
+        }
+        
+        # Initialize and apply to story state
+        story_state = StoryState.initialize_story_state()
+        story_state = StoryState.apply_extracted_changes(story_state, all_extracted, source="outline_finalization")
+        
+        # Save story state
+        StoryState.save_story_state(story_state)
+        
+        # Save character arcs if extracted
+        if "character_arcs" in all_extracted:
+            arcs_data = StoryState.initialize_character_arcs()
+            for arc in all_extracted["character_arcs"]:
+                StoryState.add_character_arc(
+                    arcs_data,
+                    arc.get("name", "Unknown"),
+                    arc.get("arc_stages", [])
+                )
+            StoryState.save_character_arcs(arcs_data)
+        
+        # Save theme if extracted
+        if "theme" in all_extracted and all_extracted["theme"]:
+            theme_data = StoryState.initialize_theme()
+            theme_info = all_extracted["theme"]
+            StoryState.set_theme(
+                theme_data,
+                theme_info.get("statement", ""),
+                theme_info.get("core_conflict", ""),
+                theme_info.get("moral_tension", "")
+            )
+            StoryState.save_theme(theme_data)
+        
+        return jsonify({
+            'success': True,
+            'message': 'Outline finalized and initial states generated',
+            'extracted': {
+                'characters': len(all_extracted.get('characters', [])),
+                'artifacts': len(all_extracted.get('artifacts', [])),
+                'world_elements': len(all_extracted.get('world_elements', [])),
+                'has_theme': bool(all_extracted.get('theme')),
+                'has_arcs': bool(all_extracted.get('character_arcs'))
+            }
+        })
+    
+    except Exception as e:
+        print(f"Error finalizing outline with states: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': f'Failed to finalize outline: {str(e)}'}), 500
+
+@app.route('/generate_chapter_scene_chain/<int:chapter_number>', methods=['POST'])
+def generate_chapter_scene_chain(chapter_number):
+    """
+    Generate per-chapter scene chain on-demand (Phase 2, Stage 2).
+    
+    This is called when a user opens a chapter for editing. It:
+    1. Loads current story state
+    2. Loads the chapter outline
+    3. Generates a contextual scene chain for that chapter
+    4. Saves the scene chain
+    
+    Returns: JSON with scene chain or error
+    """
+    try:
+        # Load current story state
+        story_state = StoryState.load_story_state()
+        state_summary = StoryState.get_full_state_summary(story_state)
+        
+        # Load chapters to get this chapter's outline
+        if not os.path.exists('book_output/chapters.json'):
+            return jsonify({'error': 'No chapters found'}), 400
+        
+        with open('book_output/chapters.json', 'r') as f:
+            chapters = json.load(f)
+        
+        # Find the chapter
+        chapter_data = None
+        for ch in chapters:
+            if ch['chapter_number'] == chapter_number:
+                chapter_data = ch
+                break
+        
+        if not chapter_data:
+            return jsonify({'error': f'Chapter {chapter_number} not found'}), 404
+        
+        # Initialize BookAgents for scene chain planning
+        book_agents = BookAgents(agent_config)
+        book_agents.create_agents('', 10)
+        
+        # Generate scene chain for this chapter
+        scene_chain = book_agents.plan_chapter_scene_chain(
+            chapter_number,
+            chapter_data['prompt'],  # The chapter outline
+            state_summary
+        )
+        
+        # Save scene chain to file
+        scene_chain_file = f'book_output/chapter_{chapter_number}_scene_chain.json'
+        with open(scene_chain_file, 'w') as f:
+            json.dump(scene_chain, f, indent=2)
+        
+        return jsonify({
+            'success': True,
+            'chapter': chapter_number,
+            'scenes': scene_chain.get('scenes', []),
+            'scene_count': len(scene_chain.get('scenes', []))
+        })
+    
+    except Exception as e:
+        print(f"Error generating scene chain for chapter {chapter_number}: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': f'Failed to generate scene chain: {str(e)}'}), 500
+
 @app.route('/chapter/<int:chapter_number>', methods=['GET', 'POST'])
 def chapter(chapter_number):
     """Generate or display a specific chapter"""
@@ -772,6 +957,27 @@ def scene(chapter_number):
         with open(scene_path, 'w') as f:
             f.write(scene_content)
         
+        # [PHASE 3] Extract state changes from the generated scene
+        try:
+            story_state = StoryState.load_story_state()
+            state_summary = StoryState.get_full_state_summary(story_state)
+            
+            # Extract state changes from scene
+            state_changes = book_agents.extract_scene_state_changes(scene_content, state_summary)
+            
+            # Apply extracted changes to story state
+            if state_changes and (state_changes.get('characters') or state_changes.get('artifacts') or state_changes.get('world')):
+                story_state = StoryState.apply_extracted_changes(
+                    story_state,
+                    state_changes,
+                    source=f"scene_{chapter_number}_{scene_count + 1}"
+                )
+                StoryState.save_story_state(story_state)
+                print(f"Applied state changes from scene {scene_count + 1}")
+        except Exception as e:
+            print(f"Warning: Failed to extract state changes from scene: {e}")
+            # Don't fail scene generation if extraction fails
+        
         return jsonify({'scene_content': scene_content})
     
     # GET request - load existing scenes for this chapter
@@ -806,6 +1012,86 @@ def scene(chapter_number):
     return render_template('scene.html', 
                            chapter=chapter_data,
                            scenes=scenes)
+
+@app.route('/validate_chapter/<int:chapter_number>', methods=['POST'])
+def validate_chapter(chapter_number):
+    """
+    Validate a completed chapter for consistency (Phase 4, Stage 4).
+    
+    This endpoint:
+    1. Loads all scenes for the chapter
+    2. Loads the scene chain for the chapter
+    3. Loads current story state
+    4. Runs comprehensive validation checks
+    5. Returns validation report
+    
+    Returns: JSON with validation results and report
+    """
+    try:
+        from enhanced_state_validator import EnhancedStateValidator
+        
+        # Load scene chain for this chapter
+        scene_chain_file = f'book_output/chapter_{chapter_number}_scene_chain.json'
+        if not os.path.exists(scene_chain_file):
+            return jsonify({'error': f'No scene chain found for chapter {chapter_number}'}), 404
+        
+        with open(scene_chain_file, 'r') as f:
+            scene_chain = json.load(f)
+        
+        # Load all scenes for this chapter
+        scene_dir = f'book_output/chapters/chapter_{chapter_number}_scenes'
+        scenes = []
+        
+        if os.path.exists(scene_dir):
+            scene_files = [f for f in os.listdir(scene_dir) if f.endswith('.txt')]
+            scene_files.sort(key=lambda f: int(f.split('_')[1].split('.')[0]))
+            
+            for scene_file in scene_files:
+                scene_path = os.path.join(scene_dir, scene_file)
+                scene_number = int(scene_file.split('_')[1].split('.')[0])
+                
+                with open(scene_path, 'r') as f:
+                    content = f.read()
+                    scenes.append({
+                        'scene_number': scene_number,
+                        'content': content,
+                        'characters_present': [],  # Would need to extract from content
+                        'prerequisites': {}  # Would need from scene chain
+                    })
+        
+        if not scenes:
+            return jsonify({'error': f'No scenes found for chapter {chapter_number}'}), 404
+        
+        # Load story state
+        story_state = StoryState.load_story_state()
+        
+        # Run validation
+        validation_results = EnhancedStateValidator.validate_chapter_coherence(
+            scenes, scene_chain, story_state
+        )
+        
+        # Generate report
+        report = EnhancedStateValidator.generate_validation_report(validation_results)
+        
+        # Save report to file
+        report_file = f'book_output/chapter_{chapter_number}_validation.txt'
+        with open(report_file, 'w') as f:
+            f.write(report)
+        
+        return jsonify({
+            'success': True,
+            'chapter': chapter_number,
+            'is_valid': validation_results['is_valid'],
+            'total_issues': validation_results['total_issues'],
+            'checks': {name: check['valid'] for name, check in validation_results['checks'].items()},
+            'report': report
+        })
+    
+    except Exception as e:
+        print(f"Error validating chapter {chapter_number}: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': f'Failed to validate chapter: {str(e)}'}), 500
 
 @app.route('/characters_chat', methods=['POST'])
 def characters_chat():
@@ -1225,4 +1511,5 @@ def parse_outline_to_chapters(outline_content, num_chapters):
     return chapters
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', debug=True, port=5000) 
+    print("[OpenTale] Starting Flask server on http://0.0.0.0:5000", file=sys.stderr)
+    app.run(host='0.0.0.0', debug=False, port=5000, use_reloader=False, threaded=True) 
