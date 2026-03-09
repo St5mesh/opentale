@@ -66,31 +66,34 @@
                 </div>
             </div>
             <div class="card-body">
-                <div id="themeContent" style="display: none;">
+                <div id="themePrompt" {% if saved_theme and saved_theme.get('statement') %}style="display: none;"{% endif %}>
+                    <p class="text-muted mb-2">Analyse your world setting to extract the story's core theme, conflict and moral tension — used to guide character development and scene generation.</p>
+                </div>
+                <div id="themeContent" {% if not (saved_theme and saved_theme.get('statement')) %}style="display: none;"{% endif %}>
                     <div class="mb-3">
                         <h6><strong>Theme Statement</strong></h6>
-                        <p id="themeStatement" class="text-muted">Loading...</p>
+                        <p id="themeStatement" class="text-muted">{{ saved_theme.get('statement', '') if saved_theme else '' }}</p>
                     </div>
                     <div class="mb-3">
                         <h6><strong>Core Conflict</strong></h6>
-                        <p id="coreConflict" class="text-muted">Loading...</p>
+                        <p id="coreConflict" class="text-muted">{{ saved_theme.get('core_conflict', '') if saved_theme else '' }}</p>
                     </div>
                     <div class="mb-3">
                         <h6><strong>Moral Tension</strong></h6>
-                        <p id="moralTension" class="text-muted">Loading...</p>
+                        <p id="moralTension" class="text-muted">{{ saved_theme.get('moral_tension', '') if saved_theme else '' }}</p>
                     </div>
-                    <div class="mb-3">
+                    <div class="mb-3" id="thematicTestsSection">
                         <h6><strong>Thematic Tests</strong></h6>
                         <ul id="thematicTests" class="text-muted">
-                            <li>Loading...</li>
+                            {% if saved_theme and saved_theme.get('thematic_tests') %}
+                            {% for test in saved_theme.get('thematic_tests', []) %}
+                            <li>{{ test }}</li>
+                            {% endfor %}
+                            {% endif %}
                         </ul>
                     </div>
-                    <div class="d-flex gap-2">
-                        <button type="button" class="btn btn-success btn-sm" id="approveThemeBtn">✓ Approve Theme</button>
-                        <button type="button" class="btn btn-secondary btn-sm" id="extractThemeAgainBtn">⟲ Extract Again</button>
-                    </div>
                 </div>
-                <div id="themeLoading" class="alert alert-info mb-0">
+                <div id="themeLoading" class="alert alert-info mb-0" style="display: none;">
                     <div class="d-flex align-items-center">
                         <div class="spinner-border spinner-border-sm me-2" role="status">
                             <span class="visually-hidden">Loading...</span>
@@ -397,18 +400,18 @@ $(document).ready(function() {
         return message.replace(/\n/g, '<br>');
     }
     
-    // Show theme container when world is finalized
+    // Show theme container on page load only if world content exists
     $(document).ready(function() {
         if ($('#worldTheme').val().length > 0) {
             $('#themeContainer').show();
         }
     });
     
-    // Extract theme button
+    // Proceed to theme section — show the container without auto-running extraction
     $('#proceedToThemeBtn').click(function(e) {
         e.preventDefault();
         $('#themeContainer').show();
-        $('#extractThemeBtn').click();
+        $('html, body').animate({ scrollTop: $('#themeContainer').offset().top - 20 }, 300);
     });
     
     // Extract theme
@@ -427,7 +430,7 @@ $(document).ready(function() {
             success: function(response) {
                 if (response.success) {
                     const theme = response.theme;
-                    $('#themeStatement').text(theme.theme_statement || 'Not extracted');
+                    $('#themeStatement').text(theme.statement || 'Not extracted');
                     $('#coreConflict').text(theme.core_conflict || 'Not extracted');
                     $('#moralTension').text(theme.moral_tension || 'Not extracted');
                     
@@ -458,16 +461,7 @@ $(document).ready(function() {
         });
     });
     
-    // Approve theme
-    $('#approveThemeBtn').click(function() {
-        alert('Theme approved! ✓ This will be used to guide character development and scene generation.');
-        // In the future, this can track approval in the session
-    });
-    
-    // Extract theme again
-    $('#extractThemeAgainBtn').click(function() {
-        $('#extractThemeBtn').click();
-    });
+    // Approve theme (dead handler removed — approval is implicit; theme is saved server-side on extraction)
     
     // Save world theme
     $('#saveWorldForm').submit(function(e) {

@@ -110,7 +110,15 @@ def world():
             world_theme = f.read().strip()
         session['world_theme'] = world_theme
     
-    return render_template('world.html', world_theme=world_theme, topic=session.get('topic', ''))
+    # Load saved theme if it exists so the world page can display it on reload
+    saved_theme = None
+    if os.path.exists('book_output/theme.json'):
+        try:
+            saved_theme = StoryState.load_theme()
+        except Exception:
+            pass
+
+    return render_template('world.html', world_theme=world_theme, topic=session.get('topic', ''), saved_theme=saved_theme)
 
 @app.route('/world_chat', methods=['POST'])
 def world_chat():
