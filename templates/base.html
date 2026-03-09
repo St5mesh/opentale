@@ -14,17 +14,25 @@
             <div class="d-flex justify-content-between align-items-start align-items-md-center flex-wrap">
                 <a class="navbar-brand d-flex align-items-center mb-2 mb-md-0" href="/">
                     <h1 class="h4 mb-0">OpenTale</h1>
+                    {% if session.get('project_name') %}
+                        <small class="ms-2 text-secondary fs-6 fw-normal">{{ session['project_name'] | replace('_', ' ') }}</small>
+                    {% endif %}
                 </a>
-                <div class="progress-tracker w-100 w-md-auto">
-                    <div class="btn-group d-flex flex-wrap" role="group">
-                        <a href="/" class="btn btn-outline-light btn-sm {% if request.path == '/' %}active{% endif %}">Home</a>
-                        <a href="/world" class="btn btn-outline-light btn-sm {% if request.path == '/world' %}active{% endif %}">World</a>
-                        <a href="/characters" class="btn btn-outline-light btn-sm {% if request.path == '/characters' %}active{% endif %}">Characters</a>
-                        <a href="/outline" class="btn btn-outline-light btn-sm {% if request.path == '/outline' %}active{% endif %}">Outline</a>
-                        {% if request.path.startswith('/chapter/') %}
-                            <a href="#" class="btn btn-outline-light btn-sm active">Chapter</a>
-                        {% endif %}
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <div class="progress-tracker">
+                        <div class="btn-group d-flex flex-wrap" role="group">
+                            <a href="/" class="btn btn-outline-light btn-sm {% if request.path == '/' %}active{% endif %}">Home</a>
+                            <a href="/world" class="btn btn-outline-light btn-sm {% if request.path == '/world' %}active{% endif %}">World</a>
+                            <a href="/characters" class="btn btn-outline-light btn-sm {% if request.path == '/characters' %}active{% endif %}">Characters</a>
+                            <a href="/outline" class="btn btn-outline-light btn-sm {% if request.path == '/outline' %}active{% endif %}">Outline</a>
+                            {% if request.path.startswith('/chapter/') %}
+                                <a href="#" class="btn btn-outline-light btn-sm active">Chapter</a>
+                            {% endif %}
+                        </div>
                     </div>
+                    <button class="btn btn-outline-warning btn-sm" data-bs-toggle="modal" data-bs-target="#projectModal" title="Manage Projects">
+                        📁 Projects
+                    </button>
                 </div>
             </div>
         </div>
@@ -54,7 +62,188 @@
         </div>
     </footer>
 
+    <!-- ===================== PROJECT MANAGER MODAL ===================== -->
+    <div class="modal fade" id="projectModal" tabindex="-1" aria-labelledby="projectModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header bg-dark text-white">
+                    <h5 class="modal-title" id="projectModalLabel">📁 Project Manager</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+
+                    <!-- Current project info -->
+                    <div class="mb-4 p-3 bg-light rounded">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <strong>Current project:</strong>
+                                <span id="currentProjectName" class="ms-2 text-muted">
+                                    {% if session.get('project_name') %}{{ session['project_name'] | replace('_', ' ') }}{% else %}Unsaved{% endif %}
+                                </span>
+                            </div>
+                            <div class="d-flex gap-2">
+                                <a href="/api/projects/export" class="btn btn-sm btn-outline-primary" title="Download current project as ZIP">
+                                    ⬇ Export ZIP
+                                </a>
+                                <button class="btn btn-sm btn-danger" id="btnNewProject" title="Clear all data and start fresh">
+                                    🗑 New Project
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Save current project -->
+                    <div class="mb-4">
+                        <h6 class="fw-bold">Save Current Project</h6>
+                        <div class="input-group">
+                            <input type="text" class="form-control" id="saveProjectName"
+                                placeholder="Project name…"
+                                value="{% if session.get('project_name') %}{{ session['project_name'] | replace('_', ' ') }}{% endif %}">
+                            <button class="btn btn-success" id="btnSaveProject">💾 Save</button>
+                        </div>
+                        <div id="saveProjectMsg" class="form-text mt-1"></div>
+                    </div>
+
+                    <!-- Import ZIP -->
+                    <div class="mb-4">
+                        <h6 class="fw-bold">Import Project (ZIP)</h6>
+                        <div class="input-group">
+                            <input type="file" class="form-control" id="importProjectFile" accept=".zip">
+                            <button class="btn btn-outline-secondary" id="btnImportProject">⬆ Import</button>
+                        </div>
+                        <div id="importProjectMsg" class="form-text mt-1"></div>
+                    </div>
+
+                    <!-- Saved projects list -->
+                    <div>
+                        <h6 class="fw-bold">Saved Projects</h6>
+                        <div id="projectsList">
+                            <div class="text-muted text-center py-3">Loading…</div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- ================================================================ -->
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{{ url_for('static', filename='scripts.js') }}"></script>
+    <script>
+    // ========= Project Manager Logic =========
+    (function () {
+        function showMsg(el, msg, isError) {
+            el.textContent = msg;
+            el.className = 'form-text mt-1 ' + (isError ? 'text-danger' : 'text-success');
+        }
+
+        function renderProjects(projects) {
+            const container = document.getElementById('projectsList');
+            if (!projects.length) {
+                container.innerHTML = '<div class="text-muted text-center py-3">No saved projects yet.</div>';
+                return;
+            }
+            let html = '<div class="list-group">';
+            projects.forEach(p => {
+                const display = (p.display_name || p.name).replace(/_/g, ' ');
+                const topic = p.topic ? `<small class="text-muted d-block">${p.topic}</small>` : '';
+                const chapters = p.chapter_count ? `<span class="badge bg-secondary ms-1">${p.chapter_count} ch</span>` : '';
+                const updated = p.updated_at ? new Date(p.updated_at).toLocaleDateString() : '';
+                html += `<div class="list-group-item d-flex justify-content-between align-items-center">
+                    <div>
+                        <strong>${display}</strong>${chapters}
+                        ${topic}
+                        <small class="text-muted">${updated}</small>
+                    </div>
+                    <div class="d-flex gap-1">
+                        <button class="btn btn-sm btn-outline-primary btn-load-project" data-name="${p.name}">Load</button>
+                        <button class="btn btn-sm btn-outline-danger btn-delete-project" data-name="${p.name}" data-display="${display}">✕</button>
+                    </div>
+                </div>`;
+            });
+            html += '</div>';
+            container.innerHTML = html;
+
+            container.querySelectorAll('.btn-load-project').forEach(btn => {
+                btn.addEventListener('click', function () { loadProject(this.dataset.name); });
+            });
+            container.querySelectorAll('.btn-delete-project').forEach(btn => {
+                btn.addEventListener('click', function () {
+                    if (confirm('Delete project "' + this.dataset.display + '"? This cannot be undone.')) {
+                        deleteProject(this.dataset.name);
+                    }
+                });
+            });
+        }
+
+        function loadProjectList() {
+            fetch('/api/projects').then(r => r.json()).then(d => renderProjects(d.projects || []));
+        }
+
+        function saveProject() {
+            const name = document.getElementById('saveProjectName').value.trim();
+            const msg = document.getElementById('saveProjectMsg');
+            if (!name) { showMsg(msg, 'Please enter a project name.', true); return; }
+            fetch('/api/projects/save', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({name})
+            }).then(r => r.json()).then(d => {
+                if (d.error) { showMsg(msg, d.error, true); return; }
+                showMsg(msg, 'Saved as "' + d.project.name.replace(/_/g, ' ') + '"', false);
+                document.getElementById('currentProjectName').textContent = d.project.name.replace(/_/g, ' ');
+                loadProjectList();
+            });
+        }
+
+        function loadProject(name) {
+            if (!confirm('Load project "' + name.replace(/_/g, ' ') + '"? Unsaved changes to the current project will be lost.')) return;
+            fetch('/api/projects/load', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({name})
+            }).then(r => r.json()).then(d => {
+                if (d.error) { alert(d.error); return; }
+                window.location.href = '/';
+            });
+        }
+
+        function deleteProject(name) {
+            fetch('/api/projects/' + encodeURIComponent(name), {method: 'DELETE'})
+                .then(r => r.json()).then(d => {
+                    if (d.error) { alert(d.error); return; }
+                    loadProjectList();
+                });
+        }
+
+        function newProject() {
+            if (!confirm('Start a new project? All current unsaved data will be cleared.')) return;
+            fetch('/api/projects/new', {method: 'POST'}).then(r => r.json()).then(d => {
+                if (d.success) window.location.href = '/';
+            });
+        }
+
+        function importProject() {
+            const fileInput = document.getElementById('importProjectFile');
+            const msg = document.getElementById('importProjectMsg');
+            if (!fileInput.files.length) { showMsg(msg, 'Please select a ZIP file.', true); return; }
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            showMsg(msg, 'Importing…', false);
+            fetch('/api/projects/import', {method: 'POST', body: formData})
+                .then(r => r.json()).then(d => {
+                    if (d.error) { showMsg(msg, d.error, true); return; }
+                    showMsg(msg, 'Imported successfully. Redirecting…', false);
+                    setTimeout(() => window.location.href = '/', 800);
+                });
+        }
+
+        document.getElementById('projectModal').addEventListener('show.bs.modal', loadProjectList);
+        document.getElementById('btnSaveProject').addEventListener('click', saveProject);
+        document.getElementById('btnNewProject').addEventListener('click', newProject);
+        document.getElementById('btnImportProject').addEventListener('click', importProject);
+    })();
+    </script>
 </body>
-</html> 
+</html>

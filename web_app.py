@@ -4,7 +4,11 @@ Flask web application for OpenTale
 import os
 import json
 import sys
-from flask import Flask, render_template, request, jsonify, session, Response, stream_with_context, flash, redirect
+import shutil
+import zipfile
+import io
+from datetime import datetime
+from flask import Flask, render_template, request, jsonify, session, Response, stream_with_context, flash, redirect, send_file
 from config import get_config, get_narrative_config
 from agents import BookAgents
 from story_state import StoryState
@@ -18,6 +22,7 @@ app.secret_key = 'ai-book-writer-secret-key'  # For session management
 
 # Ensure book_output directory exists
 os.makedirs('book_output/chapters', exist_ok=True)
+os.makedirs('projects', exist_ok=True)
 
 # Initialize global variables
 agent_config = get_config()
@@ -26,6 +31,64 @@ narrative_config = get_narrative_config()
 # Startup logging
 print("[OpenTale] Flask app initializing...", file=sys.stderr)
 print(f"[OpenTale] LLM URL: {agent_config.get('base_url', 'http://ollama:11434/v1')}", file=sys.stderr)
+
+
+# ============================================================================
+# PROJECT MANAGEMENT HELPERS
+# ============================================================================
+
+BOOK_OUTPUT_DIR = 'book_output'
+PROJECTS_DIR = 'projects'
+SESSION_KEYS = ['topic', 'world_theme', 'theme', 'characters', 'chapters', 'outline']
+
+
+def _clear_book_output():
+    """Remove all content from book_output/ and reinitialise with empty state files."""
+    if os.path.exists(BOOK_OUTPUT_DIR):
+        shutil.rmtree(BOOK_OUTPUT_DIR)
+    os.makedirs(f'{BOOK_OUTPUT_DIR}/chapters', exist_ok=True)
+    os.makedirs(f'{BOOK_OUTPUT_DIR}/states', exist_ok=True)
+    # Reinitialise empty narrative state files
+    StoryState.save_story_state(StoryState.initialize_story_state())
+    StoryState.save_scene_chain(StoryState.initialize_scene_chain())
+    StoryState.save_character_arcs(StoryState.initialize_character_arcs())
+    StoryState.save_theme(StoryState.initialize_theme())
+
+
+def _clear_session():
+    """Remove all book-related keys from Flask session."""
+    for key in SESSION_KEYS:
+        session.pop(key, None)
+    # Also clear dynamic chapter keys
+    dynamic = [k for k in list(session.keys()) if k.startswith('chapter_')]
+    for k in dynamic:
+        session.pop(k, None)
+
+
+def _project_meta(project_name: str) -> dict:
+    """Load project.json for a saved project, or return empty dict."""
+    meta_path = os.path.join(PROJECTS_DIR, project_name, 'project.json')
+    if os.path.exists(meta_path):
+        try:
+            with open(meta_path) as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError):
+            pass
+    return {'name': project_name}
+
+
+def _list_projects() -> list:
+    """Return sorted list of saved project metadata dicts."""
+    if not os.path.exists(PROJECTS_DIR):
+        return []
+    projects = []
+    for name in sorted(os.listdir(PROJECTS_DIR)):
+        project_dir = os.path.join(PROJECTS_DIR, name)
+        if os.path.isdir(project_dir):
+            meta = _project_meta(name)
+            meta['name'] = name
+            projects.append(meta)
+    return projects
 
 
 def ensure_state_files_exist():
@@ -1814,6 +1877,213 @@ def parse_outline_to_chapters(outline_content, num_chapters):
         json.dump(chapters, f, indent=2)
     
     return chapters
+
+
+# ============================================================================
+# PROJECT MANAGEMENT ROUTES
+# ============================================================================
+
+@app.route('/api/projects', methods=['GET'])
+def list_projects():
+    """Return list of saved projects as JSON."""
+    return jsonify({'projects': _list_projects()})
+
+
+@app.route('/api/projects/save', methods=['POST'])
+def save_project():
+    """Save current book_output/ as a named project snapshot."""
+    data = request.json or {}
+    name = (data.get('name') or '').strip()
+    if not name:
+        return jsonify({'error': 'Project name is required'}), 400
+
+    # Sanitise: only allow alphanumeric, spaces, hyphens, underscores
+    safe_name = re.sub(r'[^\w\s\-]', '', name).strip().replace(' ', '_')
+    if not safe_name:
+        return jsonify({'error': 'Invalid project name'}), 400
+
+    dest = os.path.join(PROJECTS_DIR, safe_name)
+    if os.path.exists(dest):
+        shutil.rmtree(dest)
+    shutil.copytree(BOOK_OUTPUT_DIR, dest)
+
+    # Write metadata
+    topic = session.get('topic', '')
+    chapter_count = 0
+    chapters_file = os.path.join(BOOK_OUTPUT_DIR, 'chapters.json')
+    if os.path.exists(chapters_file):
+        try:
+            with open(chapters_file) as f:
+                chapter_count = len(json.load(f))
+        except Exception:
+            pass
+
+    meta = {
+        'name': safe_name,
+        'display_name': name,
+        'topic': topic,
+        'chapter_count': chapter_count,
+        'created_at': datetime.utcnow().isoformat(),
+        'updated_at': datetime.utcnow().isoformat(),
+    }
+    # Preserve original created_at if updating an existing save
+    existing_meta_path = os.path.join(dest, 'project.json')
+    if os.path.exists(existing_meta_path):
+        try:
+            with open(existing_meta_path) as f:
+                existing = json.load(f)
+            meta['created_at'] = existing.get('created_at', meta['created_at'])
+        except Exception:
+            pass
+
+    with open(os.path.join(dest, 'project.json'), 'w') as f:
+        json.dump(meta, f, indent=2)
+
+    session['project_name'] = safe_name
+    return jsonify({'success': True, 'project': meta})
+
+
+@app.route('/api/projects/load', methods=['POST'])
+def load_project():
+    """Load a saved project into book_output/ and restore Flask session."""
+    data = request.json or {}
+    name = (data.get('name') or '').strip()
+    if not name:
+        return jsonify({'error': 'Project name is required'}), 400
+
+    src = os.path.join(PROJECTS_DIR, name)
+    if not os.path.exists(src):
+        return jsonify({'error': f'Project "{name}" not found'}), 404
+
+    # Replace book_output with the project snapshot (exclude project.json)
+    if os.path.exists(BOOK_OUTPUT_DIR):
+        shutil.rmtree(BOOK_OUTPUT_DIR)
+    shutil.copytree(src, BOOK_OUTPUT_DIR, ignore=shutil.ignore_patterns('project.json'))
+    os.makedirs(f'{BOOK_OUTPUT_DIR}/chapters', exist_ok=True)
+    os.makedirs(f'{BOOK_OUTPUT_DIR}/states', exist_ok=True)
+
+    _clear_session()
+
+    # Restore session from project files
+    meta = _project_meta(name)
+    if meta.get('topic'):
+        session['topic'] = meta['topic']
+
+    world_file = os.path.join(BOOK_OUTPUT_DIR, 'world.txt')
+    if os.path.exists(world_file):
+        with open(world_file) as f:
+            session['world_theme'] = f.read()
+
+    chars_file = os.path.join(BOOK_OUTPUT_DIR, 'characters.txt')
+    if os.path.exists(chars_file):
+        with open(chars_file) as f:
+            session['characters'] = f.read()
+
+    outline_file = os.path.join(BOOK_OUTPUT_DIR, 'outline.txt')
+    if os.path.exists(outline_file):
+        with open(outline_file) as f:
+            session['outline'] = f.read()
+
+    chapters_file = os.path.join(BOOK_OUTPUT_DIR, 'chapters.json')
+    if os.path.exists(chapters_file):
+        try:
+            with open(chapters_file) as f:
+                session['chapters'] = json.load(f)
+        except Exception:
+            pass
+
+    session['project_name'] = name
+    return jsonify({'success': True, 'project': meta})
+
+
+@app.route('/api/projects/new', methods=['POST'])
+def new_project():
+    """Clear current book data and session for a fresh project."""
+    _clear_book_output()
+    _clear_session()
+    session.pop('project_name', None)
+    return jsonify({'success': True})
+
+
+@app.route('/api/projects/export', methods=['GET'])
+def export_project():
+    """Download current book_output/ as a ZIP archive."""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for root, dirs, files in os.walk(BOOK_OUTPUT_DIR):
+            for fname in files:
+                fpath = os.path.join(root, fname)
+                arcname = os.path.relpath(fpath, BOOK_OUTPUT_DIR)
+                zf.write(fpath, arcname)
+    buf.seek(0)
+    project_name = session.get('project_name', 'opentale_export')
+    download_name = f"{project_name}.zip"
+    return send_file(buf, mimetype='application/zip', as_attachment=True, download_name=download_name)
+
+
+@app.route('/api/projects/import', methods=['POST'])
+def import_project():
+    """Accept a ZIP upload and extract it into book_output/."""
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file uploaded'}), 400
+    uploaded = request.files['file']
+    if not uploaded.filename.endswith('.zip'):
+        return jsonify({'error': 'Only .zip files are supported'}), 400
+
+    try:
+        with zipfile.ZipFile(uploaded.stream, 'r') as zf:
+            # Safety check: reject paths that escape the target directory
+            for member in zf.namelist():
+                if member.startswith('/') or '..' in member:
+                    return jsonify({'error': 'Invalid ZIP contents'}), 400
+            if os.path.exists(BOOK_OUTPUT_DIR):
+                shutil.rmtree(BOOK_OUTPUT_DIR)
+            os.makedirs(BOOK_OUTPUT_DIR, exist_ok=True)
+            zf.extractall(BOOK_OUTPUT_DIR)
+    except zipfile.BadZipFile:
+        return jsonify({'error': 'Invalid ZIP file'}), 400
+
+    os.makedirs(f'{BOOK_OUTPUT_DIR}/chapters', exist_ok=True)
+    os.makedirs(f'{BOOK_OUTPUT_DIR}/states', exist_ok=True)
+
+    _clear_session()
+
+    world_file = os.path.join(BOOK_OUTPUT_DIR, 'world.txt')
+    if os.path.exists(world_file):
+        with open(world_file) as f:
+            session['world_theme'] = f.read()
+
+    chars_file = os.path.join(BOOK_OUTPUT_DIR, 'characters.txt')
+    if os.path.exists(chars_file):
+        with open(chars_file) as f:
+            session['characters'] = f.read()
+
+    outline_file = os.path.join(BOOK_OUTPUT_DIR, 'outline.txt')
+    if os.path.exists(outline_file):
+        with open(outline_file) as f:
+            session['outline'] = f.read()
+
+    chapters_file = os.path.join(BOOK_OUTPUT_DIR, 'chapters.json')
+    if os.path.exists(chapters_file):
+        try:
+            with open(chapters_file) as f:
+                session['chapters'] = json.load(f)
+        except Exception:
+            pass
+
+    session.pop('project_name', None)
+    return jsonify({'success': True})
+
+
+@app.route('/api/projects/<project_name>', methods=['DELETE'])
+def delete_project(project_name):
+    """Delete a saved project snapshot."""
+    project_dir = os.path.join(PROJECTS_DIR, project_name)
+    if not os.path.exists(project_dir):
+        return jsonify({'error': 'Project not found'}), 404
+    shutil.rmtree(project_dir)
+    return jsonify({'success': True})
+
 
 if __name__ == '__main__':
     print("[OpenTale] Starting Flask server on http://0.0.0.0:5000", file=sys.stderr)
