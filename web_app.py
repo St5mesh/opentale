@@ -299,8 +299,12 @@ def extract_theme():
         return jsonify({'error': 'World theme not available'}), 400
     
     try:
+        print(f"[extract_theme] Creating BookAgents...", file=sys.stderr)
         book_agents = BookAgents(agent_config)
+        print(f"[extract_theme] Created BookAgents, calling create_agents...", file=sys.stderr)
         book_agents.create_agents(topic, 0)  # Initialize system prompts
+        print(f"[extract_theme] create_agents done, system_prompts keys: {list(book_agents.system_prompts.keys())}", file=sys.stderr)
+        print(f"[extract_theme] Calling extract_theme...", file=sys.stderr)
         theme_data = book_agents.extract_theme(topic, world_theme)
         
         # Save theme to file
@@ -320,6 +324,9 @@ def extract_theme():
             'theme': theme_data
         })
     except Exception as e:
+        print(f"[extract_theme] ERROR: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc(file=sys.stderr)
         return jsonify({'error': str(e)}), 500
 
 @app.route('/plan_scene_chain', methods=['POST'])
