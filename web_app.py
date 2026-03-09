@@ -328,41 +328,86 @@ def extract_theme():
         print(f"[extract_theme] DETAILED ERROR:\n{tb}", file=sys.stderr)
         return jsonify({'error': str(e), 'details': tb}), 500
 
-@app.route('/plan_scene_chain', methods=['POST'])
-def plan_scene_chain():
-    """Plan scene chain from outline (if feature enabled)"""
-    if not narrative_config.get('scene_chain_enabled', True):
-        return jsonify({'error': 'Scene chain planning not enabled'}), 400
+@app.route('/scenes/<int:chapter_number>', methods=['GET', 'POST'])
+def plan_chapter_scenes(chapter_number):
+    """
+    Plan scenes for a specific chapter (NEW REQUIRED WORKFLOW).
     
-    data = request.json
+    GET: Show scene planning UI with chapter outline and suggested scenes
+    POST: Generate and save scene plan for chapter
+    """
+    from chapter_state_manager import ChapterStateManager
     
-    # Load outline from file
-    if not os.path.exists('book_output/outline.txt'):
-        return jsonify({'error': 'Outline not available'}), 400
+    # Load chapters
+    if not os.path.exists('book_output/chapters.json'):
+        return render_template('error.html', message="Outline not found"), 400
     
-    with open('book_output/outline.txt', 'r') as f:
-        outline = f.read().strip()
+    with open('book_output/chapters.json', 'r') as f:
+        chapters = json.load(f)
     
-    try:
-        book_agents = BookAgents(agent_config)
-        book_agents.create_agents("", 10)  # Initialize agents with empty prompt and default chapters
-        scenes = book_agents.plan_scene_chain(outline)
-        
-        # Save scene chain to file
-        chain_data = StoryState.initialize_scene_chain()
-        for scene in scenes:
-            StoryState.add_scene_to_chain(chain_data, scene)
-        StoryState.save_scene_chain(chain_data)
-        
-        session['scene_chain'] = scenes
-        
-        return jsonify({
-            'success': True,
-            'total_scenes': len(scenes),
-            'scenes': scenes[:5]  # Return preview of first 5 scenes
-        })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    chapter_data = None
+    for ch in chapters:
+        if ch['chapter_number'] == chapter_number:
+            chapter_data = ch
+            break
+    
+    if not chapter_data:
+        return render_template('error.html', message=f"Chapter {chapter_number} not found"), 404
+    
+    scene_plan_file = f'book_output/chapters/chapter_{chapter_number}_scene_plan.json'
+    scene_plan = None
+    
+    if os.path.exists(scene_plan_file):
+        with open(scene_plan_file, 'r') as f:
+            scene_plan = json.load(f)
+    
+    if request.method == 'POST':
+        # Generate new scene plan
+        try:
+            story_state = StoryState.load_story_state()
+            state_summary = StoryState.get_full_state_summary(story_state)
+            
+            book_agents = BookAgents(agent_config)
+            book_agents.create_agents('', len(chapters))
+            
+            # Generate chapter scene plan
+            scene_plan_data = book_agents.plan_chapter_scene_chain(
+                chapter_number,
+                chapter_data['prompt'],
+                state_summary
+            )
+            
+            # Save scene plan
+            os.makedirs('book_output/chapters', exist_ok=True)
+            with open(scene_plan_file, 'w') as f:
+                json.dump(scene_plan_data, f, indent=2)
+            
+            # Initialize chapter state tracking
+            ChapterStateManager.ensure_states_directory()
+            initial_state = StoryState.load_story_state()
+            ChapterStateManager.save_chapter_states(chapter_number, {
+                'chapter': chapter_number,
+                'current_scene': 0,
+                'initial_state': initial_state,
+                'scenes_completed': 0
+            })
+            
+            return jsonify({
+                'success': True,
+                'scene_plan': scene_plan_data,
+                'message': f"Scene plan created with {len(scene_plan_data.get('scenes', []))} scenes"
+            })
+        except Exception as e:
+            import traceback
+            print(f"Error generating scene plan: {e}\n{traceback.format_exc()}", file=sys.stderr)
+            return jsonify({'error': str(e)}), 500
+    
+    # GET - show scene planning page
+    return render_template('scenes.html',
+                         chapter=chapter_data,
+                         chapter_number=chapter_number,
+                         scene_plan=scene_plan,
+                         chapters=chapters)
 
 @app.route('/get_story_state', methods=['GET'])
 def get_story_state():
@@ -799,85 +844,25 @@ def save_states():
         print(f"Error saving states: {e}")
         return jsonify({'error': f'Failed to save states: {str(e)}'}), 500
 
-@app.route('/generate_chapter_scene_chain/<int:chapter_number>', methods=['POST'])
-def generate_chapter_scene_chain(chapter_number):
-    """
-    Generate per-chapter scene chain on-demand (Phase 2, Stage 2).
-    
-    This is called when a user opens a chapter for editing. It:
-    1. Loads current story state
-    2. Loads the chapter outline
-    3. Generates a contextual scene chain for that chapter
-    4. Saves the scene chain
-    
-    Returns: JSON with scene chain or error
-    """
-    try:
-        # Load current story state
-        story_state = StoryState.load_story_state()
-        state_summary = StoryState.get_full_state_summary(story_state)
-        
-        # Load chapters to get this chapter's outline
-        if not os.path.exists('book_output/chapters.json'):
-            return jsonify({'error': 'No chapters found'}), 400
-        
-        with open('book_output/chapters.json', 'r') as f:
-            chapters = json.load(f)
-        
-        # Find the chapter
-        chapter_data = None
-        for ch in chapters:
-            if ch['chapter_number'] == chapter_number:
-                chapter_data = ch
-                break
-        
-        if not chapter_data:
-            return jsonify({'error': f'Chapter {chapter_number} not found'}), 404
-        
-        # Initialize BookAgents for scene chain planning
-        book_agents = BookAgents(agent_config)
-        book_agents.create_agents('', 10)
-        
-        # Generate scene chain for this chapter
-        scene_chain = book_agents.plan_chapter_scene_chain(
-            chapter_number,
-            chapter_data['prompt'],  # The chapter outline
-            state_summary
-        )
-        
-        # Save scene chain to file
-        scene_chain_file = f'book_output/chapter_{chapter_number}_scene_chain.json'
-        with open(scene_chain_file, 'w') as f:
-            json.dump(scene_chain, f, indent=2)
-        
-        return jsonify({
-            'success': True,
-            'chapter': chapter_number,
-            'scenes': scene_chain.get('scenes', []),
-            'scene_count': len(scene_chain.get('scenes', []))
-        })
-    
-    except Exception as e:
-        print(f"Error generating scene chain for chapter {chapter_number}: {e}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': f'Failed to generate scene chain: {str(e)}'}), 500
-
 @app.route('/chapter/<int:chapter_number>', methods=['GET', 'POST'])
 def chapter(chapter_number):
-    """Generate or display a specific chapter"""
+    """
+    Generate or display a specific chapter using planned scenes.
+    NOW REQUIRES SCENE PLAN (enforced workflow).
+    """
+    from chapter_state_manager import ChapterStateManager
+    
     chapters = []
     
-    # Always load from disk first to get latest outline
+    # Load chapters from disk
     if os.path.exists('book_output/chapters.json'):
         with open('book_output/chapters.json', 'r') as f:
             chapters = json.load(f)
             session['chapters'] = chapters
-    # Fall back to session if disk doesn't exist
     elif session.get('chapters'):
         chapters = session.get('chapters', [])
     
-    # Check if chapter exists
+    # Find chapter
     chapter_data = None
     for ch in chapters:
         if ch['chapter_number'] == chapter_number:
@@ -887,69 +872,105 @@ def chapter(chapter_number):
     if not chapter_data:
         return render_template('error.html', message=f"Chapter {chapter_number} not found")
     
+    # CHECK SCENE PLAN EXISTS (HARD REQUIREMENT)
+    scene_plan_file = f'book_output/chapters/chapter_{chapter_number}_scene_plan.json'
+    if not os.path.exists(scene_plan_file):
+        # Redirect to scene planning
+        return redirect(f'/scenes/{chapter_number}')
+    
+    with open(scene_plan_file, 'r') as f:
+        scene_plan = json.load(f)
+    
     if request.method == 'POST':
-        # Get any additional context from the chat interface
+        # Generate chapter using planned scenes with state tracking
         additional_context = request.form.get('additional_context', '')
         
-        # Generate chapter content
+        # Load narrative context
         world_theme = session.get('world_theme', '')
         if not world_theme and os.path.exists('book_output/world.txt'):
             with open('book_output/world.txt', 'r') as f:
                 world_theme = f.read().strip()
                 session['world_theme'] = world_theme
-                
+        
         characters = session.get('characters', '')
         if not characters and os.path.exists('book_output/characters.txt'):
             with open('book_output/characters.txt', 'r') as f:
                 characters = f.read().strip()
                 session['characters'] = characters
-                
+        
         outline = session.get('outline', '')
         if not outline and os.path.exists('book_output/outline.txt'):
             with open('book_output/outline.txt', 'r') as f:
                 outline = f.read().strip()
                 session['outline'] = outline
         
-        # Get previous chapters context
-        previous_context = ""
-        if chapter_number > 1:
-            prev_chapter_path = f'book_output/chapters/chapter_{chapter_number-1}.txt'
-            if os.path.exists(prev_chapter_path):
-                with open(prev_chapter_path, 'r') as f:
-                    # Get a summary or the last few paragraphs
-                    content = f.read()
-                    previous_context = content[-1000:] if len(content) > 1000 else content
-        
-        # Initialize agents for chapter generation
-        book_agents = BookAgents(agent_config, chapters)
-        agents = book_agents.create_agents(world_theme, len(chapters))
-        
-        # Add the additional context from chat to the chapter prompt
-        chapter_prompt = f"{chapter_data['prompt']}\n\n{additional_context}" if additional_context else chapter_data['prompt']
-        
-        # Generate the chapter
-        chapter_content = book_agents.generate_content(
-            "writer",
-            prompts.CHAPTER_GENERATION_PROMPT.format(
-                chapter_number=chapter_number,
-                chapter_title=chapter_data['title'],
-                chapter_outline=chapter_prompt,
-                world_theme=world_theme,
-                relevant_characters=characters,  # You might want to filter for relevant characters only
-                scene_details="",  # This would be filled if scenes were generated first
-                previous_context=previous_context
+        try:
+            # Load or create chapter state
+            chapter_state = ChapterStateManager.load_chapter_states(chapter_number)
+            if not chapter_state:
+                story_state = StoryState.load_story_state()
+                # Load previous chapter's state if available
+                if chapter_number > 1:
+                    prev_chapter_state = ChapterStateManager.load_chapter_states(chapter_number - 1)
+                    if prev_chapter_state and 'final_state' in prev_chapter_state:
+                        story_state = prev_chapter_state['final_state']
+                
+                chapter_state = {
+                    'chapter': chapter_number,
+                    'current_scene': 0,
+                    'initial_state': story_state,
+                    'scenes_completed': 0
+                }
+            
+            # Generate chapter content
+            book_agents = BookAgents(agent_config, chapters)
+            book_agents.create_agents(world_theme, len(chapters))
+            
+            chapter_prompt = f"{chapter_data['prompt']}\n\n{additional_context}" if additional_context else chapter_data['prompt']
+            scene_details = json.dumps(scene_plan.get('scenes', [])[:3], indent=2) if scene_plan.get('scenes') else ""
+            
+            # Get previous context
+            previous_context = ""
+            if chapter_number > 1:
+                prev_chapter_path = f'book_output/chapters/chapter_{chapter_number-1}.txt'
+                if os.path.exists(prev_chapter_path):
+                    with open(prev_chapter_path, 'r') as f:
+                        content = f.read()
+                        previous_context = content[-1000:] if len(content) > 1000 else content
+            
+            # Generate chapter content using scene-aware prompt
+            chapter_content = book_agents.generate_content(
+                "writer",
+                prompts.CHAPTER_GENERATION_PROMPT.format(
+                    chapter_number=chapter_number,
+                    chapter_title=chapter_data['title'],
+                    chapter_outline=chapter_prompt,
+                    world_theme=world_theme,
+                    relevant_characters=characters,
+                    scene_details=scene_details,
+                    previous_context=previous_context
+                )
             )
-        )
+            
+            # Save chapter
+            chapter_content = chapter_content.strip()
+            chapter_path = f'book_output/chapters/chapter_{chapter_number}.txt'
+            with open(chapter_path, 'w') as f:
+                f.write(chapter_content)
+            
+            # Update chapter state with final state
+            chapter_state['final_state'] = StoryState.load_story_state()
+            chapter_state['scenes_completed'] = len(scene_plan.get('scenes', []))
+            ChapterStateManager.save_chapter_states(chapter_number, chapter_state)
+            
+            return jsonify({'chapter_content': chapter_content})
         
-        # Clean and save chapter content
-        chapter_content = chapter_content.strip()
-        chapter_path = f'book_output/chapters/chapter_{chapter_number}.txt'
-        with open(chapter_path, 'w') as f:
-            f.write(chapter_content)
-        
-        return jsonify({'chapter_content': chapter_content})
+        except Exception as e:
+            import traceback
+            print(f"Error generating chapter {chapter_number}: {e}\n{traceback.format_exc()}", file=sys.stderr)
+            return jsonify({'error': str(e)}), 500
     
-    # GET request - show chapter page with existing content if available
+    # GET - show chapter page
     chapter_content = ''
     chapter_path = f'book_output/chapters/chapter_{chapter_number}.txt'
     if os.path.exists(chapter_path):
@@ -957,9 +978,11 @@ def chapter(chapter_number):
             chapter_content = f.read().strip()
     
     return render_template('chapter.html', 
-                           chapter=chapter_data,
-                           chapter_content=chapter_content,
-                           chapters=chapters)
+                         chapter=chapter_data,
+                         chapter_content=chapter_content,
+                         chapter_number=chapter_number,
+                         scene_plan=scene_plan,
+                         chapters=chapters)
 
 @app.route('/save_chapter/<int:chapter_number>', methods=['POST'])
 def save_chapter(chapter_number):

@@ -1,0 +1,439 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║           OPENTALE SCENE GENERATION SYSTEM - WORKFLOW MAP                    ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+LAYER 1: GLOBAL SCENE CHAIN (Optional)
+─────────────────────────────────────────────────────────────────────────────
+Route:     /plan_scene_chain (POST)
+Trigger:   After outline finalized + user clicks "Plan Scene Chain"
+Input:     outline.txt
+Process:   
+  1. BookAgents.plan_scene_chain(outline)
+  2. NarrativeParser.parse_scene_chain_response()
+  3. Saves to scene_chain.json
+Output:    20-50 causal scenes (preview of first 5 shown in UI)
+File:      book_output/scene_chain.json
+
+  Structure:
+  ├── version: "1.0"
+  ├── total_scenes: N
+  ├── scenes: [
+  │   {
+  │     "scene_number": 1,
+  │     "title": "...",
+  │     "goal": "...",
+  │     "conflict": "...",
+  │     "outcome": "...",
+  │     "consequence": "..."
+  │   }, ...
+  │ ]
+  └── approved: false
+
+
+LAYER 2: CHAPTER STRUCTURE (Primary)
+─────────────────────────────────────────────────────────────────────────────
+Route:     /save_outline (POST) → calls parse_outline_to_chapters()
+Input:     outline.txt + num_chapters
+Process:   
+  1. Parse outline text
+  2. Extract chapter boundaries
+  3. Create chapter list with titles + prompts
+Output:    chapters.json (structured chapter list)
+File:      book_output/chapters.json
+
+  Structure:
+  [
+    {
+      "chapter_number": 1,
+      "title": "...",
+      "prompt": "..." (chapter outline)
+    }, ...
+  ]
+
+
+LAYER 3: PER-CHAPTER SCENE CHAIN (On-Demand)
+─────────────────────────────────────────────────────────────────────────────
+Route:     /generate_chapter_scene_chain/{N} (POST)
+Trigger:   When user opens chapter for editing (Phase 2, Stage 2)
+Input:     - Chapter outline (from chapters.json)
+           - Current story state
+Process:   
+  1. Load story_state.json
+  2. Get state summary
+  3. BookAgents.plan_chapter_scene_chain(chapter_num, outline, state_summary)
+  4. Parse JSON response
+  5. Save to chapter_{N}_scene_chain.json
+Output:    Chapter-specific scenes (contextually aware)
+File:      book_output/chapter_{N}_scene_chain.json
+
+  Expected Structure:
+  {
+    "chapter": N,
+    "scenes": [
+      {
+        "scene_number": 1,
+        "title": "...",
+        ...
+      }, ...
+    ]
+  }
+
+
+LAYER 4A: CHAPTER GENERATION (Direct - CURRENT DEFAULT)
+─────────────────────────────────────────────────────────────────────────────
+Route:     /chapter/{N} (POST)
+Trigger:   User clicks "Generate Chapter" button
+Input:     - Chapter outline (from chapters.json)
+           - world.txt
+           - characters.txt
+           - previous_context
+           - [EMPTY] scene_details
+Process:   
+  1. Load context files
+  2. BookAgents.generate_content("writer", CHAPTER_GENERATION_PROMPT)
+  3. Save to chapters/chapter_{N}.txt
+Output:    Single ~5000+ word chapter
+Status:    BYPASSES SCENE PLANNING - chapters generated as monolithic units
+
+  Key: scene_details parameter = "" (EMPTY STRING!)
+  The chapter is NOT assembled from scenes
+
+
+LAYER 4B: SCENE GENERATION (Manual - SECONDARY PATH)
+─────────────────────────────────────────────────────────────────────────────
+Route:     /scene/{N} (GET/POST)
+Trigger:   User navigates to scene.html and generates scene manually
+Input:     - Chapter outline (from chapters.json)
+           - world.txt
+           - characters.txt
+           - previous_context
+           - [OPTIONAL] chapter_{N}_states.json
+           - [OPTIONAL] scene_description (from form)
+Process (POST):   
+  1. Load world, characters, previous context
+  2. Load chapter states if available
+  3. BookAgents.generate_content("writer", SCENE_GENERATION_PROMPT)
+  4. Save to chapters/chapter_{N}_scenes/scene_{M}.txt
+  5. [NEW] Extract state changes
+  6. [NEW] Apply mutations with validation
+  7. [NEW] Save to states/chapter_{N}_states.json
+Output:    Individual scene file + state tracking
+Status:    OPTIONAL - users can generate scenes in addition to chapters
+
+  ┌─────────────────────────────────────────────────────┐
+  │ STATE EXTRACTION (NEW - Phase 3)                    │
+  ├─────────────────────────────────────────────────────┤
+  │ 1. Extract from scene_content                       │
+  │    → BookAgents.extract_scene_state_changes()       │
+  │ 2. Get state changes (characters, artifacts, world) │
+  │ 3. Validate with StateMutabilityRules               │
+  │ 4. Apply to story_state.json                        │
+  │ 5. Save chapter-level state tracking                │
+  └─────────────────────────────────────────────────────┘
+
+
+LAYER 5: STATE TRACKING
+─────────────────────────────────────────────────────────────────────────────
+Global State File: book_output/story_state.json
+├── theme
+├── characters: { name → status + developments }
+├── artifacts: { name → status + location + owner }
+├── world: { element → status + details }
+├── scenes: [ snapshots of generated scenes ]
+└── plot_progress:
+    ├── current_chapter
+    ├── current_scene
+    └── completed_scenes
+
+Per-Chapter State File: book_output/states/chapter_{N}_states.json
+├── chapter_number
+├── initial_state
+├── last_updated_scene
+├── state_transitions: [ { scene, changes } ]
+└── current_state
+
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                        CRITICAL ARCHITECTURE ISSUE                           ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+TWO PARALLEL PATHS (NOT INTEGRATED):
+
+PATH A: Chapter-First (Current Default)
+────────────────────────────────────────
+  outline.txt
+      ↓
+  chapters.json
+      ↓
+  /chapter/{N} → CHAPTER_GENERATION_PROMPT
+      ↓
+  chapter_{N}.txt (complete chapter, bypasses scenes)
+
+
+PATH B: Scene-Optional (Manual)
+────────────────────────────────
+  chapters.json
+      ↓
+  /scene/{N} → SCENE_GENERATION_PROMPT
+      ↓
+  chapter_{N}_scenes/scene_{M}.txt (individual scenes)
+      ↓
+  [State extracted and tracked]
+
+
+PROBLEM: Paths A and B are COMPLETELY SEPARATE
+- Chapter generation ignores scene_details (empty string in prompt)
+- Scene state extraction only happens if user manually generates scenes
+- Global story state can diverge from chapter-specific states
+- No enforced consistency between paths
+
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                           PROMPT MAPPING                                    ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+Scene Planning Prompts:
+─────────────────────────
+SCENE_CHAIN_PLANNER_PROMPT (Line 202)
+  ├─ Input: outline (full book)
+  ├─ Output: 20-50 scene structures
+  └─ Used by: BookAgents.plan_scene_chain()
+
+CHAPTER_SCENE_CHAIN_PROMPT (Line 528)
+  ├─ Input: chapter_outline + current_state
+  ├─ Output: JSON with chapter scenes
+  └─ Used by: BookAgents.plan_chapter_scene_chain()
+
+Scene Generation Prompts:
+─────────────────────────
+SCENE_GENERATION_PROMPT (Line 75) [CURRENTLY USED]
+  ├─ Input: chapter context, world, characters, previous
+  ├─ Output: Scene text (no explicit state guidance)
+  └─ Used by: /scene/{N} route
+
+SCENE_GENERATION_WITH_STATE_PROMPT (Line 307) [DEFINED BUT UNUSED]
+  ├─ Input: scene_goal, scene_conflict, scene_outcome, state
+  ├─ Output: Scene respecting story state
+  └─ Status: NOT called from web_app.py
+
+Chapter Generation Prompts:
+──────────────────────────
+CHAPTER_GENERATION_PROMPT (Line 97) [CURRENTLY USED]
+  ├─ Input: chapter_outline, world, characters, [empty scenes], previous
+  ├─ Output: Full ~5000+ word chapter
+  └─ Used by: /chapter/{N} route
+
+State Extraction Prompt:
+───────────────────────
+STATE_EXTRACTION_PROMPT (Line 579)
+  ├─ Input: scene_content, current_state
+  ├─ Output: JSON with extracted changes
+  └─ Used by: /scene/{N} for state tracking
+
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                    FEATURE FLAGS & CONFIGURATION                            ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+From config.py (narrative_config):
+
+scene_chain_enabled: True
+  → Controls whether /plan_scene_chain route is available
+  → If False: scene chain planning skipped
+
+state_tracking_enabled: False
+  → Controls whether story state files are created/maintained
+  → If False: state_mutability validation skipped in scene generation
+
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                         CURRENT WORKFLOW ANSWER                             ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+Q: Is scene generation mixed into outline, or separate?
+
+A: MIXED BUT FRAGMENTED
+   ├─ Global scene chain: Planned AFTER outline (optional, reference only)
+   ├─ Per-chapter scenes: Planned on-demand when opening chapter
+   ├─ Manual scenes: Generated on user request (optional iteration)
+   ├─ Chapter generation: INDEPENDENT, bypasses scenes entirely
+   └─ State tracking: ONLY happens for manual scenes, not chapters
+
+Current Positioning:
+  1. Outline is the foundation
+  2. Chapters are parsed from outline
+  3. Scenes are OPTIONAL add-ons for state tracking
+  4. Chapters are generated directly (not from scenes)
+  5. Scenes provide state metadata (but not required for chapters)
+
+If user wants chapters WITHOUT scenes:
+  - /outline → finalize → /chapter/{N} (works perfectly)
+
+If user wants to track state:
+  - /scene/{N} generates scenes + extracts state changes
+  - State updates applied to story_state.json
+
+The architecture treats scenes and chapters as PARALLEL OPTIONS,
+not as a dependency chain.
+
+
+╔═══════════════════════════════════════════════════════════════════════════════╗
+║                    QUICK REFERENCE: SCENE GENERATION MAP                     ║
+╚═══════════════════════════════════════════════════════════════════════════════╝
+
+┌─────────────────┬──────────────────────┬──────────────────┬─────────────────────┐
+│ ROUTE           │ PURPOSE              │ WHEN TRIGGERED   │ FILE LOCATION       │
+├─────────────────┼──────────────────────┼──────────────────┼─────────────────────┤
+│ /plan_scene     │ Plan global scene    │ Manual user      │ web_app.py:331      │
+│ _chain (POST)   │ chain (20-50 scenes) │ click after      │ agents.py:807       │
+│                 │ OPTIONAL             │ outline done     │                     │
+│ OUTPUT: scene_chain.json (reference, UI display only)                        │
+├─────────────────┼──────────────────────┼──────────────────┼─────────────────────┤
+│ /generate_      │ Plan per-chapter     │ Automatic when   │ web_app.py:802      │
+│ chapter_scene   │ scene breakdown      │ chapter opened   │ agents.py:1079      │
+│ _chain/<N>      │ contextually aware   │ for editing      │                     │
+│ (POST)          │                      │ INTERNAL         │                     │
+│ OUTPUT: chapter_{N}_scene_chain.json (per-chapter context)                   │
+├─────────────────┼──────────────────────┼──────────────────┼─────────────────────┤
+│ /scene/<N>      │ Generate individual  │ User manually    │ web_app.py:978      │
+│ (GET/POST)      │ scene for chapter    │ clicks "Generate │ agents.py:1116      │
+│                 │ OPTIONAL + includes  │ Scene" button    │                     │
+│                 │ STATE EXTRACTION     │ MANUAL           │                     │
+│ OUTPUT: chapter_{N}_scenes/scene_{M}.txt + states/chapter_{N}_states.json     │
+├─────────────────┼──────────────────────┼──────────────────┼─────────────────────┤
+│ /chapter/<N>    │ Generate full        │ User clicks      │ web_app.py:866      │
+│ (POST)          │ chapter directly     │ "Generate        │ (NOT chapter scene) │
+│                 │ BYPASSES scenes      │ Chapter"         │                     │
+│ OUTPUT: chapter_{N}.txt (complete chapter, ~5000+ words, no scene context)    │
+└─────────────────┴──────────────────────┴──────────────────┴─────────────────────┘
+
+
+KEY METHODS IN agents.py
+───────────────────────────────────────────────────────────────────────────────
+
+│ METHOD NAME                    │ LINE │ PURPOSE                              │
+├────────────────────────────────┼──────┼──────────────────────────────────────┤
+│ plan_scene_chain()             │ 807  │ Global: outline → 20-50 scenes      │
+│ plan_chapter_scene_chain()     │1079  │ Per-chapter: outline + state →      │
+│                                │      │   chapter-scoped scenes              │
+│ generate_scene_with_state()    │ 869  │ Generate scene respecting state     │
+│                                │      │ (DEFINED but NOT used)               │
+│ extract_scene_state_changes()  │1116  │ Extract state changes from scene    │
+│ extract_state_updates()        │ 901  │ Generic state extraction (Phase 1)  │
+└────────────────────────────────┴──────┴──────────────────────────────────────┘
+
+
+TEMPLATES INVOLVED
+───────────────────────────────────────────────────────────────────────────────
+
+│ TEMPLATE        │ SIZE   │ PURPOSE                                          │
+├─────────────────┼────────┼──────────────────────────────────────────────────┤
+│ scene.html      │ 8.7 KB │ Manual scene generation UI (form + display)      │
+│ outline.html    │ 36 KB  │ Scene chain planning UI (preview + timeline)     │
+│ chapter.html    │ 19 KB  │ Chapter generation (links to /scene/{N})         │
+└─────────────────┴────────┴──────────────────────────────────────────────────┘
+
+
+DATA FILES CREATED
+───────────────────────────────────────────────────────────────────────────────
+
+│ FILE                          │ SOURCE              │ PURPOSE               │
+├───────────────────────────────┼─────────────────────┼─────────────────────────────────┤
+│ outline.txt                   │ User input          │ Full story outline              │
+│ chapters.json                 │ /save_outline       │ Structured chapters             │
+│ scene_chain.json              │ /plan_scene_chain   │ Global scene chain (optional)   │
+│ chapter_{N}_scene_chain.json  │ /generate_chapter_  │ Per-chapter scenes              │
+│                               │ scene_chain/{N}     │                                 │
+│ chapter_{N}.txt               │ /chapter/{N}        │ Generated chapter content       │
+│ chapter_{N}_scenes/           │ /scene/{N}          │ Individual scene files          │
+│   scene_{M}.txt               │                     │                                 │
+│ story_state.json              │ /scene/{N} (state   │ Global state tracking           │
+│                               │ extraction)         │                                 │
+│ states/chapter_{N}_states.json│ /scene/{N} (state   │ Per-chapter state tracking      │
+│                               │ extraction)         │                                 │
+└───────────────────────────────┴─────────────────────┴─────────────────────────────────┘
+
+
+PROMPTS USED
+───────────────────────────────────────────────────────────────────────────────
+
+SCENE PLANNING:
+  • SCENE_CHAIN_PLANNER_PROMPT (prompts.py:202)
+    → Input: outline | Output: 20-50 scene structures
+
+  • CHAPTER_SCENE_CHAIN_PROMPT (prompts.py:528)
+    → Input: chapter_outline + state | Output: JSON scenes
+
+SCENE GENERATION:
+  • SCENE_GENERATION_PROMPT (prompts.py:75) [USED]
+    → Input: chapter context | Output: scene text
+
+  • SCENE_GENERATION_WITH_STATE_PROMPT (prompts.py:307) [UNUSED]
+    → Input: scene_goal + state | Status: NOT called
+
+CHAPTER GENERATION:
+  • CHAPTER_GENERATION_PROMPT (prompts.py:97) [USED]
+    → Input: chapter context, [EMPTY scene_details] | Output: full chapter
+
+STATE EXTRACTION:
+  • STATE_EXTRACTION_PROMPT (prompts.py:579) [USED]
+    → Input: scene content + state | Output: JSON state changes
+
+
+CRITICAL FINDING: THE ARCHITECTURE PROBLEM
+───────────────────────────────────────────────────────────────────────────────
+
+        OUTLINE
+           ↓
+        ┌──┴──┐
+        ↓     ↓
+    CHAPTERS  SCENE_CHAIN
+        ↓     (optional,
+        │      reference)
+        │
+    ┌───┴──────┐
+    ↓          ↓
+CHAPTER_GEN  SCENE_GEN
+(direct)     (manual)
+    ↓          ↓
+   ✓            ✓
+(works)     (works)
+    ↓          ↓
+   ✗          ✓
+(no state) (extracts state)
+
+PROBLEM: Two disconnected paths
+  • PATH A: Chapter-first (default) - no state tracking
+  • PATH B: Scene-manual (optional) - includes state tracking
+  • No integration between them
+  • Users can choose PATH A and never deal with state
+
+
+ANSWER TO YOUR QUESTION
+───────────────────────────────────────────────────────────────────────────────
+
+"Is scene generation mixed into outline, or is it separate?"
+
+ANSWER: MIXED BUT FRAGMENTED
+
+  ✓ Scenes are MIXED into the outline workflow:
+    - Optional scene chain planning exists (post-outline)
+    - Per-chapter scene planning is automatic (on-demand)
+    - Scene state extraction is implemented (new in Phase 3)
+
+  ✗ But scene generation is SEPARATE from chapter generation:
+    - Chapters can be generated WITHOUT scenes (/chapter/{N})
+    - Scene details = "" (EMPTY) in chapter prompt
+    - Not the default generation path
+
+  CURRENT POSITIONING:
+    Outline → Chapters (PRIMARY - chapter-first)
+              ↓
+              Scenes (SECONDARY - optional add-on for state tracking)
+
+  IF SCENES SHOULD BE PRIMARY:
+    Outline → Scenes → Chapters (aggregate scenes)
+              [Not the current architecture]
+
+═══════════════════════════════════════════════════════════════════════════════
+

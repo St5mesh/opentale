@@ -1,0 +1,344 @@
+{% extends "base.html" %}
+
+{% block title %}Plan Scenes - Chapter {{ chapter_number }}{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="chapter-planning">
+        <h1>📖 Plan Scenes for Chapter {{ chapter_number }}: {{ chapter.title }}</h1>
+        
+        <!-- Chapter Context -->
+        <div class="chapter-context card">
+            <h2>Chapter Outline</h2>
+            <p class="chapter-outline">{{ chapter.prompt }}</p>
+        </div>
+
+        <!-- Scene Plan Display -->
+        {% if scene_plan %}
+        <div class="scene-plan card">
+            <h2>✓ Scene Plan Generated ({{ scene_plan.scenes|length }} scenes)</h2>
+            
+            <div class="scenes-list">
+                {% for scene in scene_plan.scenes %}
+                <div class="scene-card">
+                    <div class="scene-number">Scene {{ scene.scene_number }}</div>
+                    <div class="scene-title">{{ scene.title }}</div>
+                    <div class="scene-summary">{{ scene.summary }}</div>
+                    {% if scene.key_events %}
+                    <div class="scene-events">
+                        <strong>Key Events:</strong>
+                        <ul>
+                        {% for event in scene.key_events %}
+                            <li>{{ event }}</li>
+                        {% endfor %}
+                        </ul>
+                    </div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            
+            <div class="plan-actions">
+                <button id="regenerate-btn" class="btn btn-secondary">🔄 Regenerate Plan</button>
+                <button id="proceed-btn" class="btn btn-primary">→ Proceed to Chapter Generation</button>
+            </div>
+        </div>
+        {% else %}
+        <div class="no-plan card">
+            <p class="info-message">No scene plan yet. Generate one to structure chapter content:</p>
+            <button id="generate-btn" class="btn btn-primary btn-lg">Generate Scene Plan</button>
+        </div>
+        {% endif %}
+        
+        <!-- Generation Status -->
+        <div id="status-container" style="display: none;" class="card status-box">
+            <div id="status-message" class="status-message"></div>
+            <div id="status-spinner" class="spinner"></div>
+        </div>
+        
+        <!-- Navigation -->
+        <div class="navigation-links">
+            <a href="/outline" class="btn btn-outline">← Back to Outline</a>
+            {% if scene_plan %}
+            <a href="/chapter/{{ chapter_number }}" class="btn btn-primary">Next: Generate Chapter →</a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<style>
+.chapter-planning {
+    max-width: 900px;
+    margin: 2rem auto;
+    padding: 0 1rem;
+}
+
+.chapter-context {
+    background: #f8f9fa;
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+    border-left: 4px solid #007bff;
+}
+
+.chapter-outline {
+    font-size: 1.1rem;
+    line-height: 1.6;
+    color: #333;
+    margin: 0;
+    white-space: pre-wrap;
+}
+
+.scene-plan {
+    background: #fff;
+    padding: 2rem;
+    margin-bottom: 2rem;
+    border-top: 3px solid #28a745;
+}
+
+.scenes-list {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1rem;
+    margin: 1.5rem 0;
+}
+
+.scene-card {
+    background: #f8f9fa;
+    padding: 1.5rem;
+    border-left: 4px solid #17a2b8;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.scene-card:hover {
+    background: #e9ecef;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    border-left-color: #0d6efd;
+}
+
+.scene-number {
+    font-weight: bold;
+    color: #666;
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    margin-bottom: 0.5rem;
+}
+
+.scene-title {
+    font-size: 1.2rem;
+    font-weight: bold;
+    color: #333;
+    margin-bottom: 0.5rem;
+}
+
+.scene-summary {
+    color: #555;
+    margin-bottom: 1rem;
+    line-height: 1.5;
+}
+
+.scene-events {
+    font-size: 0.95rem;
+    color: #666;
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid #ddd;
+}
+
+.scene-events ul {
+    margin: 0.5rem 0 0 1.5rem;
+    padding-left: 0;
+}
+
+.scene-events li {
+    margin-bottom: 0.3rem;
+}
+
+.no-plan {
+    text-align: center;
+    padding: 3rem 2rem;
+}
+
+.info-message {
+    font-size: 1.1rem;
+    color: #666;
+    margin-bottom: 1.5rem;
+}
+
+.plan-actions {
+    display: flex;
+    gap: 1rem;
+    margin-top: 2rem;
+    justify-content: center;
+}
+
+#generate-btn {
+    padding: 0.75rem 2rem;
+    font-size: 1.1rem;
+}
+
+#regenerate-btn {
+    background-color: #6c757d;
+}
+
+#regenerate-btn:hover {
+    background-color: #5a6268;
+}
+
+#proceed-btn {
+    background-color: #28a745;
+}
+
+#proceed-btn:hover {
+    background-color: #218838;
+}
+
+.status-box {
+    margin: 2rem 0;
+    padding: 1.5rem;
+    background: #e7f3ff;
+    border-left: 4px solid #0066cc;
+    text-align: center;
+}
+
+.status-message {
+    font-size: 1rem;
+    color: #333;
+    margin-bottom: 1rem;
+}
+
+.spinner {
+    border: 3px solid #f3f3f3;
+    border-top: 3px solid #0066cc;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    animation: spin 1s linear infinite;
+    margin: 0 auto;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.navigation-links {
+    display: flex;
+    gap: 1rem;
+    justify-content: space-between;
+    margin-top: 2rem;
+}
+
+.btn {
+    padding: 0.5rem 1.5rem;
+    text-decoration: none;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 1rem;
+    transition: all 0.3s ease;
+}
+
+.btn-primary {
+    background-color: #0d6efd;
+    color: white;
+}
+
+.btn-primary:hover {
+    background-color: #0b5ed7;
+}
+
+.btn-secondary {
+    background-color: #6c757d;
+    color: white;
+}
+
+.btn-secondary:hover {
+    background-color: #5a6268;
+}
+
+.btn-outline {
+    background-color: transparent;
+    color: #0d6efd;
+    border: 1px solid #0d6efd;
+}
+
+.btn-outline:hover {
+    background-color: #0d6efd;
+    color: white;
+}
+
+.btn-lg {
+    padding: 1rem 2rem;
+    font-size: 1.1rem;
+}
+
+.card {
+    background: white;
+    border-radius: 4px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const generateBtn = document.getElementById('generate-btn');
+    const regenerateBtn = document.getElementById('regenerate-btn');
+    const proceedBtn = document.getElementById('proceed-btn');
+    const statusContainer = document.getElementById('status-container');
+    const statusMessage = document.getElementById('status-message');
+
+    function showStatus(message) {
+        statusMessage.textContent = message;
+        statusContainer.style.display = 'block';
+    }
+
+    function hideStatus() {
+        statusContainer.style.display = 'none';
+    }
+
+    function generateScenePlan() {
+        showStatus('Generating scene plan...');
+        
+        fetch(`/scenes/{{ chapter_number }}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({})
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                statusMessage.textContent = 'Scene plan generated! Reloading...';
+                setTimeout(() => {
+                    location.reload();
+                }, 1500);
+            } else {
+                statusMessage.textContent = 'Error: ' + (data.error || 'Unknown error');
+                setTimeout(hideStatus, 3000);
+            }
+        })
+        .catch(error => {
+            statusMessage.textContent = 'Error: ' + error.message;
+            setTimeout(hideStatus, 3000);
+        });
+    }
+
+    if (generateBtn) {
+        generateBtn.addEventListener('click', generateScenePlan);
+    }
+
+    if (regenerateBtn) {
+        regenerateBtn.addEventListener('click', generateScenePlan);
+    }
+
+    if (proceedBtn) {
+        proceedBtn.addEventListener('click', function() {
+            window.location.href = `/chapter/{{ chapter_number }}`;
+        });
+    }
+});
+</script>
+{% endblock %}
