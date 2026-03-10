@@ -318,6 +318,16 @@ class BookAgents:
             - Thematic Tests: [Key moments that test or develop the theme]
             """,
 
+            "scene_writer": f"""You are a professional scene writer who transforms detailed plans and current story state into immersive narrative. 
+
+            Your task:
+            1. Respect the provided scene goal, conflict, and outcome.
+            2. Incorporate the suggested world theme, character list, and previous chapter context.
+            3. Keep the prose aligned with the existing story tone and the scene plan's intent.
+            4. Never contradict the current story state summary or previously agreed events.
+
+            Format your output as a complete scene with descriptions, dialogue, and clear resolutions that honor the plan and state data.""",
+
             "chapter_advisor": f"""You are an expert chapter development advisor helping an author craft a specific chapter of their novel.
 
 You have full knowledge of:

@@ -1,0 +1,77 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║           OPENTALE STORY GENERATION SYSTEM - ACTIVE WORKFLOW MAP             ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+STAGE 1: OUTLINE & CHAPTER STRUCTURE
+──────────────────────────────────────────────────────────────────────────────
+Route:      POST /outline (plus supporting chat endpoints such as /outline_chat_stream)
+Trigger:    User confirms world, characters, and outline content for the book.
+Inputs:     Outline text, world description, character chats, desired chapter count.
+Process:    
+  1. Parse outline → build structured chapters list.
+  2. Persist world/characters to book_output/world.txt and book_output/characters.txt.
+  3. Write book_output/chapters.json and book_output/outline.txt.
+  4. Use streaming helpers (e.g., /finalize_outline_stream) to flush StoryState metadata.
+Outputs:    chapters.json, outline.txt, story_state.json, character_arcs.json, theme.json.
+
+Purpose: Create a baseline story state so every later action has a canonical reference for characters, artifacts, and plot progress.
+
+STAGE 2: REQUIRED SCENE PLANNING
+──────────────────────────────────────────────────────────────────────────────
+Route:      GET|POST /scenes/<chapter_number>
+Trigger:    User clicks “Plan Scenes” on a chapter card (the chapter view will redirect here if a plan is missing).
+Inputs:     Chapter prompt from chapters.json, current story_state summary.
+Process:    
+  1. BookAgents.plan_chapter_scene_chain() builds a chapter-specific list of scenes (goal, conflict, outcome, prerequisites).
+  2. Save the JSON to book_output/chapters/chapter_<N>_scene_plan.json.
+  3. Initialize book_output/states/chapter_<N>_states.json with ChapterStateManager (initial_state, current_scene=0).
+Outputs:    chapter_<N>_scene_plan.json, chapter_<N>_states.json.
+
+Purpose: Enforce a deterministic plan for every chapter before any writing begins. 
+All downstream flows now rely on this plan, so this stage is mandatory.
+
+STAGE 3: SCENE-BY-SCENE CHAPTER GENERATION
+──────────────────────────────────────────────────────────────────────────────
+Route:      GET/POST /chapter/<chapter_number> and GET /generate_chapter_stream/<chapter_number>
+Trigger:    User opens a chapter view and starts generation. The SSE stream runs through /generate_chapter_stream.
+Inputs:     scene plan, world and character files, previous chapter snippet, latest story_state, optional user notes/chat context.
+Process:    
+  1. /chapter/<N> loads the plan; if missing, it redirects to /scenes/<N>.
+  2. /generate_chapter_stream streams scenes sequentially:
+     • Generate each scene with BookAgents.generate_scene_with_state().
+     • Save scene text to book_output/chapters/chapter_<N>_scenes/scene_<M>.txt.
+     • Extract state changes via BookAgents.extract_scene_state_changes().
+     • Apply deltas with StoryState.apply_extracted_changes(), updating story_state.json.
+     • Append the transition to ChapterStateManager and emit SSE events (progress, scene_complete, state_updated).
+  3. After all scenes, stitch them into book_output/chapters/chapter_<N>.txt and finalize book_output/states/chapter_<N>_states.json (final_state, scenes_completed, plot_progress).
+Outputs:    per-scene files, final chapter text, updated story_state.json, state snapshot file, SSE progress stream.
+
+Purpose: Keep chapters consistent with their scene plans and shared story state while allowing the UI to stream output and state updates.
+
+STAGE 4: VALIDATION & REPORTING
+──────────────────────────────────────────────────────────────────────────────
+Route:      POST /validate_chapter/<chapter_number>
+Trigger:    User requests a consistency check after a chapter completes.
+Inputs:     Generated scenes directory, the plan JSON from Stage 2, and the current story_state.
+Process:    
+  1. Collect scenes from book_output/chapters/chapter_<N>_scenes/.
+  2. Load book_output/chapters/chapter_<N>_scene_plan.json produced during Stage 2.
+  3. Run EnhancedStateValidator across characters, artifacts, world, settings, and presence rules.
+  4. Write the textual report to book_output/chapter_<N>_validation.txt and respond with JSON results.
+Outputs:    validation report file, JSON summary (success, checks, total issues).
+
+Purpose: Guardrails before a chapter is marked complete.
+
+STATE TRACKING SNAPSHOTS
+──────────────────────────────────────────────────────────────────────────────
+- book_output/story_state.json maintains the global view of characters, artifacts, world elements, and plot_progress.  
+- book_output/character_arcs.json and book_output/theme.json store extracted arcs and theme statements.  
+- book_output/chapters/chapter_<N>_scene_plan.json defines scene metadata (title, goal, conflict, outcome, prerequisites).  
+- book_output/chapters/chapter_<N>_scenes/scene_<M>.txt captures the scene text produced by the streaming generator.  
+- book_output/chapters/chapter_<N>.txt is the assembled chapter.  
+- book_output/states/chapter_<N>_states.json is created and updated by ChapterStateManager (initial_state, current_scene, state_transitions, final_state).  
+- book_output/chapter_<N>_validation.txt contains the validation report for each chapter.
+
+SUMMARY
+──────────────────────────────────────────────────────────────────────────────
+The current application enforces a single, linear path: Outline → Scene Planning → Chapter Generation → Validation, and every later step locks on the `chapter_<N>_scene_plan.json` produced in Stage 2 so unwritten scenes cannot slip through undetected.

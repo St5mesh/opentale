@@ -24,7 +24,7 @@ from datetime import datetime
 # Import narrative engine components
 from story_state import StoryState
 from state_validator import StateValidator
-from test_coherence_validation import CoherenceAnalyzer
+from tests.test_coherence_validation import CoherenceAnalyzer
 from migration_helper import MigrationHelper
 
 

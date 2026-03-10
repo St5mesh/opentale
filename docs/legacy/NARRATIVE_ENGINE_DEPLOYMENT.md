@@ -191,9 +191,9 @@ export NARRATIVE_STATE_ENABLED=true
    ```
 
 4. **Run integration tests**
-   ```bash
-   python3 integration_tests.py
-   ```
+    ```bash
+    python3 tests/integration_tests.py
+    ```
 
 5. **Start local LLM** (if not already running)
    ```bash
@@ -365,9 +365,9 @@ After deployment, monitor these metrics:
 - See prompts.py for prompt templates
 
 ### Troubleshooting
-- Check integration_tests.py for example usage
+- Check `tests/integration_tests.py` for example usage
 - Run deployment_checklist.py for pre-deployment verification
-- Review test_coherence_validation.py for validation patterns
+- Review tests/test_coherence_validation.py for validation patterns
 
 ## Conclusion
 

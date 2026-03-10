@@ -53,15 +53,15 @@
 - [x] Implement detect_artifact_contradictions()
 - [x] Create migration_helper.py (342 lines)
 - [x] Implement backward compatibility loader
-- [x] Create test_phase5_validation.py (405 lines)
-- [x] Create test_coherence_validation.py (342 lines)
+- [x] Create `tests/test_phase5_validation.py` (405 lines)
+- [x] Create `tests/test_coherence_validation.py` (342 lines)
 - [x] Verify 21/21 validation tests passing
 - [x] Git commit (fe5a882)
 - [x] Git commit (a00d688)
 - [x] Git commit (53aa735)
 
 #### Phase 6: Integration Testing & Deployment ✅
-- [x] Create integration_tests.py (557 lines)
+- [x] Create `tests/integration_tests.py` (557 lines)
 - [x] Test full pipeline initialization
 - [x] Test validation layer
 - [x] Test causality enforcement
@@ -75,7 +75,7 @@
 - [x] Verify all operations <1ms
 - [x] Create deployment_checklist.py (213 lines)
 - [x] Verify 7/7 deployment checks passing
-- [x] Create end_to_end_generation_test.py (435 lines)
+- [x] Create `tests/end_to_end_generation_test.py` (435 lines)
 - [x] Test complete workflow from theme to scenes
 - [x] Verify end-to-end test passing
 - [x] Create NARRATIVE_ENGINE_DEPLOYMENT.md (376 lines)

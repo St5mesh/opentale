@@ -1,0 +1,80 @@
+{
+  "version": "1.0",
+  "total_scenes": 8,
+  "scenes": [
+    {
+      "scene_number": 1,
+      "title": "Shadows Embrace",
+      "goal": "Seraphina discovers the ancient scroll.",
+      "conflict": "Noctumbra's library's security measures.",
+      "outcome": "Seraphina bypasses the security and retrieves the scroll.",
+      "consequence": "Seraphina learns of Lightbane and the prophecy.",
+      "next_trigger": "Initial encounter with Lysander."
+    },
+    {
+      "scene_number": 2,
+      "title": "Whispers in the Night",
+      "goal": "Seraphina meets Eldrin.",
+      "conflict": "Whisperwood's protective barriers.",
+      "outcome": "Seraphina penetrates the barriers and meets Eldrin.",
+      "consequence": "Seraphina learns about the Void and its influence.",
+      "next_trigger": "Lysander's research on the Void."
+    },
+    {
+      "scene_number": 3,
+      "title": "The Obsidian Circle's Gambit",
+      "goal": "Seraphina discovers the Obsidian Circle's manipulation.",
+      "conflict": "Seraphina's reliance on the Obsidian Circle.",
+      "outcome": "Seraphina realizes the Circle is manipulating her.",
+      "consequence": "Talia's betrayal of Lysander is revealed.",
+      "next_trigger": "Seraphina's first corruption of shadow magic."
+    },
+    {
+      "scene_number": 15,
+      "title": "The Void's Return",
+      "goal": "The Void whispers promises to Seraphina.",
+      "conflict": "Seraphina's vulnerability to the Void's influence.",
+      "outcome": "Seraphina succumbs to the whispers.",
+      "consequence": "New threats emerge from the shadows.",
+      "next_trigger": "Seraphina must choose between light and darkness."
+    },
+    {
+      "scene_number": 16,
+      "title": "The Shadowborn's Choice",
+      "goal": "Lysander makes a difficult decision.",
+      "conflict": "Lysander's conflicting ideologies.",
+      "outcome": "Lysander chooses to remain with the Lumenborn.",
+      "consequence": "The Shadowborn must reconcile their darkness with the new era.",
+      "next_trigger": "The Whisperwood forest undergoes a transformation."
+    },
+    {
+      "scene_number": 17,
+      "title": "The Whisperwood's Awakening",
+      "goal": "Eldrin reveals a hidden prophecy.",
+      "conflict": "Eldrin's cryptic words and the Whisperwood's protective barriers.",
+      "outcome": "Eldrin reveals the prophecy about Seraphina's fate.",
+      "consequence": "New mystical creatures emerge from the shadows.",
+      "next_trigger": "The Aetherium Court reveals their true purpose."
+    },
+    {
+      "scene_number": 19,
+      "title": "The Final Battle",
+      "goal": "Seraphina faces her greatest challenge.",
+      "conflict": "The Void's immense power and influence.",
+      "outcome": "Seraphina defeats the Void.",
+      "consequence": "The fate of Aethelra hangs in the balance.",
+      "next_trigger": "Seraphina must find a way to exist in the balance between light and darkness."
+    },
+    {
+      "scene_number": 20,
+      "title": "The Light's Embrace",
+      "goal": "Seraphina embraces the light.",
+      "conflict": "Seraphina's struggle to reconcile her human and shadow selves.",
+      "outcome": "Seraphina accepts her balance of light and darkness.",
+      "consequence": "A new era dawns on Aethelra.",
+      "next_trigger": "The world begins to heal."
+    }
+  ],
+  "created_at": "2026-03-09T08:29:23.159621",
+  "approved": false
+}

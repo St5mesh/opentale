@@ -1,0 +1,64 @@
+{
+  "chapter": 1,
+  "scenes": [
+    {
+      "scene_number": 1,
+      "title": "Awakening in Xylos",
+      "goal": "Elara awakens in Xylos",
+      "conflict": "She is trapped in an obsidian city",
+      "outcome": "She awakens in a cell and immediately starts planning her escape",
+      "characters_present": [
+        "Elara"
+      ],
+      "prerequisites": {},
+      "consequence": "Sets the stage for the action-packed tone of the chapter"
+    },
+    {
+      "scene_number": 2,
+      "title": "Meeting Silas",
+      "goal": "Elara meets Silas",
+      "conflict": "Silas' cryptic welcome",
+      "outcome": "Elara learns of the Void's secrets and Silas' obsession",
+      "characters_present": [
+        "Elara",
+        "Silas"
+      ],
+      "prerequisites": {
+        "character_states": {
+          "Silas": "obsessed"
+        }
+      },
+      "consequence": "Provides context for Elara's defiance and Silas' influence"
+    },
+    {
+      "scene_number": 3,
+      "title": "City Attack",
+      "goal": "Elara escapes Xylos",
+      "conflict": "The obsidian city's defenses",
+      "outcome": "Elara uses her newfound knowledge of the Void to overpower the city's forces",
+      "characters_present": [
+        "Elara",
+        "Silas"
+      ],
+      "prerequisites": {
+        "outcome": "Scene 2"
+      },
+      "consequence": "Raises the stakes and emphasizes Elara's rebellious nature"
+    },
+    {
+      "scene_number": 4,
+      "title": "Escape to Whisperwood",
+      "goal": "Elara and Silas escape Xylos",
+      "conflict": "The obsidian city's remaining forces",
+      "outcome": "Elara and Silas make their way to the bioluminescent forest of Whisperwood",
+      "characters_present": [
+        "Elara",
+        "Silas"
+      ],
+      "prerequisites": {
+        "outcome": "Scene 3"
+      },
+      "consequence": "Sets the stage for the next chapter's setting and reveals the extent of Silas' corruption"
+    }
+  ]
+}

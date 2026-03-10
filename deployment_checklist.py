@@ -37,7 +37,7 @@ class DeploymentChecklist:
         try:
             # Run integration tests
             result = subprocess.run(
-                ['python3', 'integration_tests.py'],
+                ['python3', 'tests/integration_tests.py'],
                 capture_output=True,
                 timeout=30
             )

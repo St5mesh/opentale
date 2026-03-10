@@ -31,6 +31,16 @@ The application consists of:
 - **Prompt Management**: Centralized prompt templates in `prompts.py`
 - **File Storage**: Local storage of all generated content in the `book_output` directory
 
+## Documentation Layout
+
+The project documentation now lives under `docs/` to keep the root focused on runnable code.  
+`docs/current/` contains the authoritative architecture, implementation, Docker, and workflow references (e.g., `ARCHITECTURE_DESIGN.md`, `IMPLEMENTATION_SUMMARY.md`, `DOCKER.md`, `SCENE_ANALYSIS_WORKFLOW.txt`), while `docs/legacy/` retains older findings, migration notes, and stability write-ups for auditing.
+
+## Testing
+
+The automated test suites live in the dedicated `tests/` package so the root directory stays uncluttered.  
+Run `python3 -m pytest tests/test_coherence_validation.py tests/integration_tests.py tests/test_phase5_validation.py` for the main validation pipelines and use `python3 tests/integration_tests.py` or `python3 tests/end_to_end_generation_test.py` for the longer integration/end-to-end scripts.
+
 ## Installation
 
 ### Option 1: Docker (Recommended - includes LLM server)
@@ -54,7 +64,7 @@ docker-compose up
 - Launches the Flask app
 - Creates persistent volumes for your work
 
-For more details, see [DOCKER.md](DOCKER.md)
+For more details, see [docs/current/DOCKER.md](docs/current/DOCKER.md)
 
 ### Option 2: Manual Installation (Local Python)
 
@@ -87,7 +97,7 @@ docker-compose up
 
 Then open your browser to `http://localhost:5000`
 
-See [DOCKER.md](DOCKER.md) for Docker commands and troubleshooting.
+See [docs/current/DOCKER.md](docs/current/DOCKER.md) for Docker commands and troubleshooting.
 
 ### Quick Start (Manual Installation)
 

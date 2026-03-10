@@ -1,0 +1,173 @@
+{
+  "theme": {
+    "statement": "Elara's journey to reclaim balance and restore light in a decaying world dominated by darkness.",
+    "core_conflict": "The struggle between light and darkness, with Elara representing the dwindling light facing the overwhelming influence of the Shadowbane.",
+    "moral_tension": "The ethical dilemma of wielding immense power that could potentially corrupt Elara and perpetuate the cycle of darkness.",
+    "character_conflict": "Elara's internal struggle to reconcile her newfound power with her moral responsibilities and her evolving identity.",
+    "world_conflict": "The conflict between the decaying world of Aethelra and the rise of the Aetherium Court, representing the struggle for balance between order and chaos.",
+    "extracted_at": "2026-03-09T13:23:57.005474"
+  },
+  "characters": {
+    "Elara Nightshade": {
+      "status": "rebellious",
+      "developments": [
+        "Obsidian Circle's control",
+        "secrets of the Sundering"
+      ],
+      "last_updated": "2026-03-09T13:23:57.005291",
+      "location": "remote village",
+      "relationships": {},
+      "inventory": [],
+      "abilities": [
+        "telepathy",
+        "shadow manipulation"
+      ]
+    },
+    "Silas Whisperwood": {
+      "status": "obsessed",
+      "developments": [
+        "Void's secrets",
+        "corruption's power"
+      ],
+      "last_updated": "2026-03-09T13:23:57.005308",
+      "location": "unknown",
+      "relationships": {},
+      "inventory": [],
+      "abilities": [
+        "telepathy",
+        "illusion projection"
+      ]
+    },
+    "Lumenfire": {
+      "status": "independent",
+      "developments": [
+        "balance restoration",
+        " Void's influence"
+      ],
+      "last_updated": "2026-03-09T13:23:57.005321",
+      "location": "Lumenborn resistance",
+      "relationships": {
+        "Elara Nightshade": "infatuation"
+      },
+      "inventory": [],
+      "abilities": [
+        "shadow manipulation",
+        "healing",
+        "enchantment"
+      ]
+    }
+  },
+  "artifacts": {
+    "Lightbane": {
+      "status": "active",
+      "location": "unknown",
+      "owner": " Silas Whisperwood",
+      "last_updated": "2026-03-09T13:23:57.005336",
+      "significance": "Legendary weapon that plunged Aethelra into eternal twilight",
+      "properties": [
+        "Plunges Aethelra into eternal twilight",
+        "Wields immense power over shadow magic"
+      ]
+    },
+    "Aetherium Crystals": {
+      "status": "active",
+      "location": "Aetherium Fields",
+      "owner": "The Aetherium Court",
+      "last_updated": "2026-03-09T13:23:57.005349",
+      "significance": "Amplify shadow magic and stabilize the Void",
+      "properties": [
+        "Increase the potency of shadow magic",
+        "Maintain the balance of the Void"
+      ]
+    },
+    "Glowshrooms": {
+      "status": "abundant",
+      "location": "Throughout Aethelra",
+      "owner": "Various",
+      "last_updated": "2026-03-09T13:23:57.005362",
+      "significance": "Primary food source",
+      "properties": [
+        "Nourishment for creatures and plants"
+      ]
+    }
+  },
+  "world": {
+    "Aethelra": {
+      "status": "active",
+      "details": "Continents bathed in perpetual twilight, towering mountains, vast forests, and obsidian cities.",
+      "last_updated": "2026-03-09T13:23:57.005375",
+      "type": "continent",
+      "inhabitants": [],
+      "significance": "setting for the story"
+    },
+    "Whisperwood": {
+      "status": "active",
+      "details": "Bioluminescent forest with colossal mushrooms and mystical creatures.",
+      "last_updated": "2026-03-09T13:23:57.005387",
+      "type": "forest",
+      "inhabitants": [
+        "mystical creatures"
+      ],
+      "significance": "setting for pivotal events"
+    },
+    "Aetherium Fields": {
+      "status": "active",
+      "details": "Desolate expanse where Aetherium, the essence of shadow magic, coalesces.",
+      "last_updated": "2026-03-09T13:23:57.005399",
+      "type": "desolate_land",
+      "inhabitants": [],
+      "significance": "source of shadow magic"
+    },
+    "Shadowborn": {
+      "status": "active",
+      "details": "Embrace darkness and power.",
+      "last_updated": "2026-03-09T13:23:57.005412",
+      "type": "faction",
+      "inhabitants": [],
+      "significance": "central conflict party"
+    },
+    "Lumenborn": {
+      "status": "active",
+      "details": "Seek balance and harmony.",
+      "last_updated": "2026-03-09T13:23:57.005424",
+      "type": "faction",
+      "inhabitants": [],
+      "significance": "antagonist's faction"
+    },
+    "Veilwalkers": {
+      "status": "active",
+      "details": "Secretive society manipulating shadows.",
+      "last_updated": "2026-03-09T13:23:57.005436",
+      "type": "faction",
+      "inhabitants": [],
+      "significance": "mystery and intrigue"
+    },
+    "Lightbane": {
+      "status": "active",
+      "details": "Legendary weapon that plunged Aethelra into eternal twilight.",
+      "last_updated": "2026-03-09T13:23:57.005449",
+      "type": "weapon",
+      "inhabitants": [],
+      "significance": "central plot point"
+    },
+    "Aetherium Crystals": {
+      "status": "active",
+      "details": "Amplify shadow magic and stabilize the Void.",
+      "last_updated": "2026-03-09T13:23:57.005461",
+      "type": "artifact",
+      "inhabitants": [],
+      "significance": "plot device and power source"
+    }
+  },
+  "scenes": [],
+  "plot_progress": {
+    "current_chapter": 0,
+    "current_scene": 0,
+    "completed_scenes": 0
+  },
+  "arcs": {},
+  "last_extraction": {
+    "source": "outline_finalization",
+    "timestamp": "2026-03-09T13:23:57.005484"
+  }
+}
