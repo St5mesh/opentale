@@ -1,6 +1,6 @@
 """Define the API client for book generation system"""
 from openai import OpenAI
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 class BookAgents:
     def __init__(self, agent_config: Dict, outline: Optional[List[Dict]] = None):
@@ -1005,7 +1005,6 @@ Format it as a properly structured outline with clear chapter sections and event
         Returns:
             Dict with chapter scenes
         """
-        import json
         import prompts
         
         prompt = prompts.CHAPTER_SCENE_CHAIN_PROMPT.format(
@@ -1015,17 +1014,118 @@ Format it as a properly structured outline with clear chapter sections and event
         
         response = self.generate_content("scene_planner", prompt)
         
-        try:
-            start = response.find('{')
-            end = response.rfind('}') + 1
-            if start != -1 and end > start:
-                json_str = response[start:end]
-                return json.loads(json_str)
-        except (json.JSONDecodeError, ValueError):
-            pass
+        parsed_plan = self._parse_scene_plan_from_response(response, chapter_num)
+        if parsed_plan and parsed_plan.get('scenes'):
+            return parsed_plan
         
-        return {"chapter": chapter_num, "scenes": []}
-    
+        return self._build_scene_plan_from_text(response, chapter_num, chapter_outline)
+
+    def _parse_scene_plan_from_response(self, response: str, chapter_num: int) -> Optional[Dict[str, Any]]:
+        """Attempt to extract JSON scene plan from the agent response."""
+        import json
+
+        start = response.find('{')
+        end = response.rfind('}') + 1
+        if start == -1 or end <= start:
+            return None
+
+        try:
+            plan = json.loads(response[start:end])
+            plan['chapter'] = plan.get('chapter', chapter_num)
+            return plan
+        except (json.JSONDecodeError, ValueError):
+            return None
+
+    def _build_scene_plan_from_text(self, response: str, chapter_num: int, chapter_outline: str) -> Dict[str, Any]:
+        """Fallback: parse textual scene chains when JSON extraction fails."""
+        from narrative_parsing import NarrativeParser
+
+        parsed_scenes = NarrativeParser.parse_scene_chain_response(response)
+        scenes = []
+        for idx, parsed_scene in enumerate(parsed_scenes):
+            scene_number = self._sanitize_scene_number(parsed_scene.get('scene_number'), idx)
+            key_events = self._build_scene_key_events(parsed_scene)
+            summary = self._build_scene_summary(parsed_scene) or " | ".join(key_events) or f"Scene {scene_number}"
+
+            scenes.append({
+                "scene_number": scene_number,
+                "title": parsed_scene.get('title') or f"Scene {scene_number}",
+                "goal": parsed_scene.get('goal', ''),
+                "conflict": parsed_scene.get('conflict', ''),
+                "outcome": parsed_scene.get('outcome', ''),
+                "characters_present": parsed_scene.get('characters_present') 
+                                       if isinstance(parsed_scene.get('characters_present'), list) else [],
+                "prerequisites": parsed_scene.get('prerequisites') 
+                                     if isinstance(parsed_scene.get('prerequisites'), dict) else {
+                                         "character_states": {},
+                                         "artifacts_needed": [],
+                                         "location": ""
+                                     },
+                "consequence": parsed_scene.get('consequence', ''),
+                "summary": summary,
+                "key_events": key_events
+            })
+
+        if not scenes:
+            scenes = [self._create_placeholder_scene(chapter_num, chapter_outline)]
+
+        return {"chapter": chapter_num, "scenes": scenes}
+
+    @staticmethod
+    def _sanitize_scene_number(value: Any, idx: int) -> int:
+        """Ensure scene numbers are usable integers."""
+        if value is None:
+            return idx + 1
+        try:
+            return int(value)
+        except (ValueError, TypeError):
+            return idx + 1
+
+    @staticmethod
+    def _build_scene_summary(scene: Dict[str, Any]) -> str:
+        parts = []
+        for label, key in [
+            ("Goal", "goal"),
+            ("Conflict", "conflict"),
+            ("Outcome", "outcome"),
+            ("Consequence", "consequence"),
+            ("Next Trigger", "next_trigger")
+        ]:
+            value = scene.get(key)
+            if value:
+                parts.append(f"{label}: {value}")
+        return " | ".join(parts)
+
+    @staticmethod
+    def _build_scene_key_events(scene: Dict[str, Any]) -> List[str]:
+        events = []
+        for key in ['goal', 'conflict', 'outcome', 'consequence', 'next_trigger']:
+            value = scene.get(key)
+            if isinstance(value, str) and value.strip():
+                events.append(value.strip())
+        return events
+
+    @staticmethod
+    def _create_placeholder_scene(chapter_num: int, chapter_outline: str) -> Dict[str, Any]:
+        hint = chapter_outline.strip().splitlines()[0] if chapter_outline else ''
+        summary_text = hint or f"Chapter {chapter_num} needs a scene plan."
+        return {
+            "scene_number": 1,
+            "title": f"Chapter {chapter_num} Scene 1",
+            "goal": hint or "Define what must happen in this chapter",
+            "conflict": "Clarify what stands in the hero's way",
+            "outcome": "Resolve the scene in a meaningful way",
+            "characters_present": [],
+            "prerequisites": {
+                "character_states": {},
+                "artifacts_needed": [],
+                "location": ""
+            },
+            "consequence": "Establish what changes next",
+            "summary": summary_text,
+            "key_events": [summary_text] if summary_text else []
+        }
+
     def extract_scene_state_changes(self, scene_content: str, current_state: str) -> Dict:
         """
         Extract story state changes from a generated scene (Phase 3, Stage 3).

@@ -17,30 +17,95 @@
         {% if scene_plan %}
         <div class="scene-plan card">
             <h2>✓ Scene Plan Generated ({{ scene_plan.scenes|length }} scenes)</h2>
-            
-            <div class="scenes-list">
-                {% for scene in scene_plan.scenes %}
-                <div class="scene-card">
-                    <div class="scene-number">Scene {{ scene.scene_number }}</div>
-                    <div class="scene-title">{{ scene.title }}</div>
-                    <div class="scene-summary">{{ scene.summary }}</div>
-                    {% if scene.key_events %}
-                    <div class="scene-events">
-                        <strong>Key Events:</strong>
-                        <ul>
-                        {% for event in scene.key_events %}
-                            <li>{{ event }}</li>
-                        {% endfor %}
-                        </ul>
+            <form id="scene-plan-form">
+                <div class="scenes-list">
+                    {% for scene in scene_plan.scenes %}
+                    <div class="scene-card" data-scene-number="{{ scene.scene_number }}">
+                        <div class="scene-card-header">
+                            <div class="scene-number">Scene {{ scene.scene_number }}</div>
+                            <label class="scene-field-label scene-title-label">
+                                Title
+                                <input type="text"
+                                       class="scene-field-input"
+                                       data-scene-field="title"
+                                       value="{{ scene.title|default('') }}"
+                                       autocomplete="off">
+                            </label>
+                        </div>
+
+                        <div class="scene-fields">
+                            <label class="scene-field-label">
+                                Goal
+                                <textarea class="scene-field-textarea"
+                                          data-scene-field="goal"
+                                          placeholder="Describe what must be accomplished...">{{ scene.goal|default('') }}</textarea>
+                            </label>
+                            <label class="scene-field-label">
+                                Conflict
+                                <textarea class="scene-field-textarea"
+                                          data-scene-field="conflict"
+                                          placeholder="Who or what stands in the way?">{{ scene.conflict|default('') }}</textarea>
+                            </label>
+                            <label class="scene-field-label">
+                                Outcome
+                                <textarea class="scene-field-textarea"
+                                          data-scene-field="outcome"
+                                          placeholder="How does the scene resolve?">{{ scene.outcome|default('') }}</textarea>
+                            </label>
+                            <label class="scene-field-label">
+                                Consequence
+                                <textarea class="scene-field-textarea"
+                                          data-scene-field="consequence"
+                                          placeholder="What changes as a result?">{{ scene.consequence|default('') }}</textarea>
+                            </label>
+                        </div>
+
+                        <div class="scene-field-columns">
+                            <label class="scene-field-label">
+                                Characters Present
+                                <textarea class="scene-field-textarea small"
+                                          data-scene-field="characters_present"
+                                          placeholder="One character per line">{{ scene.characters_present_text|default('') }}</textarea>
+                            </label>
+                            <label class="scene-field-label">
+                                Prerequisites
+                                <textarea class="scene-field-textarea small"
+                                          data-scene-field="prerequisites"
+                                          placeholder="Locations, states, artifacts, etc.">{{ scene.prerequisites_text|default('') }}</textarea>
+                            </label>
+                        </div>
+
+                        <label class="scene-field-label">
+                            Scene Summary
+                            <textarea class="scene-field-textarea"
+                                      data-scene-field="summary"
+                                      placeholder="Note a short summary for this scene...">{{ scene.summary|default('') }}</textarea>
+                        </label>
+
+                        {% if scene.key_events %}
+                        <div class="scene-events">
+                            <strong>Key Events:</strong>
+                            <ul>
+                            {% for event in scene.key_events %}
+                                <li>{{ event }}</li>
+                            {% endfor %}
+                            </ul>
+                        </div>
+                        {% endif %}
                     </div>
-                    {% endif %}
+                    {% endfor %}
                 </div>
-                {% endfor %}
-            </div>
-            
+            </form>
+
             <div class="plan-actions">
-                <button id="regenerate-btn" class="btn btn-secondary">🔄 Regenerate Plan</button>
-                <button id="proceed-btn" class="btn btn-primary">→ Proceed to Chapter Generation</button>
+                <button id="save-plan-btn" type="button" class="btn btn-success">💾 Save Plan</button>
+                <button id="regenerate-btn" type="button" class="btn btn-secondary">🔄 Regenerate Plan</button>
+                <button id="proceed-btn" type="button" class="btn btn-primary">→ Proceed to Chapter Generation</button>
+            </div>
+
+            <div id="save-status-container" class="card status-box save-status" style="display: none;">
+                <div id="save-status-message" class="status-message"></div>
+                <div id="save-status-spinner" class="spinner"></div>
             </div>
         </div>
         {% else %}
@@ -105,37 +170,73 @@
 .scene-card {
     background: #f8f9fa;
     padding: 1.5rem;
-    border-left: 4px solid #17a2b8;
-    border-radius: 4px;
-    cursor: pointer;
-    transition: all 0.3s ease;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    transition: box-shadow 0.2s ease;
 }
 
 .scene-card:hover {
-    background: #e9ecef;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    border-left-color: #0d6efd;
+    box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08);
+}
+
+.scene-card-header {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
 }
 
 .scene-number {
-    font-weight: bold;
-    color: #666;
-    font-size: 0.9rem;
+    font-weight: 700;
+    color: #3f4a5a;
+    font-size: 0.85rem;
     text-transform: uppercase;
-    margin-bottom: 0.5rem;
+    letter-spacing: 0.1em;
 }
 
-.scene-title {
-    font-size: 1.2rem;
-    font-weight: bold;
-    color: #333;
-    margin-bottom: 0.5rem;
+.scene-field-label {
+    display: flex;
+    flex-direction: column;
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: #334155;
+    gap: 0.35rem;
 }
 
-.scene-summary {
-    color: #555;
-    margin-bottom: 1rem;
-    line-height: 1.5;
+.scene-field-input {
+    width: 100%;
+    border: 1px solid #cbd5f5;
+    border-radius: 6px;
+    padding: 0.35rem 0.5rem;
+    font-size: 0.95rem;
+}
+
+.scene-field-textarea {
+    width: 100%;
+    min-height: 90px;
+    border: 1px solid #cbd5f5;
+    border-radius: 6px;
+    padding: 0.5rem;
+    font-size: 0.95rem;
+    font-family: inherit;
+    resize: vertical;
+}
+
+.scene-field-textarea.small {
+    min-height: 60px;
+}
+
+.scene-fields {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1rem;
+}
+
+.scene-field-columns {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
 }
 
 .scene-events {
@@ -171,6 +272,21 @@
     gap: 1rem;
     margin-top: 2rem;
     justify-content: center;
+    flex-wrap: wrap;
+}
+
+#save-plan-btn {
+    background-color: #198754;
+    border-color: #198754;
+}
+
+#save-plan-btn:hover {
+    background-color: #157347;
+    border-color: #146c3b;
+}
+
+.save-status .spinner {
+    margin: 0 auto;
 }
 
 #generate-btn {
@@ -286,26 +402,109 @@ document.addEventListener('DOMContentLoaded', function() {
     const generateBtn = document.getElementById('generate-btn');
     const regenerateBtn = document.getElementById('regenerate-btn');
     const proceedBtn = document.getElementById('proceed-btn');
+    const saveBtn = document.getElementById('save-plan-btn');
     const statusContainer = document.getElementById('status-container');
     const statusMessage = document.getElementById('status-message');
+    const saveStatusContainer = document.getElementById('save-status-container');
+    const saveStatusMessage = document.getElementById('save-status-message');
+    const saveStatusSpinner = document.getElementById('save-status-spinner');
+    let saveStatusTimer;
 
     function showStatus(message) {
         statusMessage.textContent = message;
-        statusContainer.style.display = 'block';
+        if (statusContainer) {
+            statusContainer.style.display = 'block';
+        }
     }
 
     function hideStatus() {
-        statusContainer.style.display = 'none';
+        if (statusContainer) {
+            statusContainer.style.display = 'none';
+        }
+    }
+
+    function showSaveStatus(message, showSpinner = true) {
+        if (!saveStatusContainer) {
+            return;
+        }
+        saveStatusMessage.textContent = message;
+        saveStatusSpinner.style.display = showSpinner ? 'block' : 'none';
+        saveStatusContainer.style.display = 'block';
+        if (saveStatusTimer) {
+            clearTimeout(saveStatusTimer);
+        }
+    }
+
+    function hideSaveStatus() {
+        if (saveStatusContainer) {
+            saveStatusContainer.style.display = 'none';
+        }
+    }
+
+    function gatherSceneData() {
+        const cards = document.querySelectorAll('.scene-card');
+        return Array.from(cards).map(card => {
+            const field = name => {
+                const element = card.querySelector(`[data-scene-field="${name}"]`);
+                return element ? element.value.trim() : '';
+            };
+            return {
+                scene_number: parseInt(card.dataset.sceneNumber, 10) || 0,
+                title: field('title'),
+                goal: field('goal'),
+                conflict: field('conflict'),
+                outcome: field('outcome'),
+                consequence: field('consequence'),
+                characters_present: field('characters_present'),
+                prerequisites: field('prerequisites'),
+                summary: field('summary')
+            };
+        });
+    }
+
+    function saveScenePlan() {
+        if (!saveBtn) {
+            return;
+        }
+
+        const scenes = gatherSceneData();
+        if (!scenes.length) {
+            showSaveStatus('No scenes to save', false);
+            saveStatusTimer = setTimeout(hideSaveStatus, 2500);
+            return;
+        }
+
+        saveBtn.disabled = true;
+        showSaveStatus('Saving scene plan...');
+
+        fetch(`/save_scene_plan/{{ chapter_number }}`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({scenes})
+        })
+        .then(async response => {
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                throw new Error(payload.error || 'Failed to save scene plan');
+            }
+            showSaveStatus('Scene plan saved!', false);
+            saveStatusTimer = setTimeout(hideSaveStatus, 3000);
+        })
+        .catch(error => {
+            showSaveStatus('Error: ' + (error.message || 'Unable to save'), false);
+            saveStatusTimer = setTimeout(hideSaveStatus, 4000);
+        })
+        .finally(() => {
+            saveBtn.disabled = false;
+        });
     }
 
     function generateScenePlan() {
         showStatus('Generating scene plan...');
-        
+
         fetch(`/scenes/{{ chapter_number }}`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
+            headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({})
         })
         .then(response => response.json())
@@ -337,6 +536,13 @@ document.addEventListener('DOMContentLoaded', function() {
     if (proceedBtn) {
         proceedBtn.addEventListener('click', function() {
             window.location.href = `/chapter/{{ chapter_number }}`;
+        });
+    }
+
+    if (saveBtn) {
+        saveBtn.addEventListener('click', function(event) {
+            event.preventDefault();
+            saveScenePlan();
         });
     }
 });

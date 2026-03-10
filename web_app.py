@@ -431,6 +431,8 @@ def plan_chapter_scenes(chapter_number):
     if os.path.exists(scene_plan_file):
         with open(scene_plan_file, 'r') as f:
             scene_plan = json.load(f)
+    if scene_plan:
+        scene_plan = _prepare_scene_plan_for_display(scene_plan)
     
     if request.method == 'POST':
         # Generate new scene plan
@@ -479,6 +481,122 @@ def plan_chapter_scenes(chapter_number):
                          chapter_number=chapter_number,
                          scene_plan=scene_plan,
                          chapters=chapters)
+
+
+@app.route('/save_scene_plan/<int:chapter_number>', methods=['POST'])
+def save_scene_plan(chapter_number):
+    """Persist user-edited scene plans for a chapter."""
+    data = request.get_json(silent=True)
+    if not data or 'scenes' not in data:
+        return jsonify({'error': 'Missing scenes payload'}), 400
+
+    scenes_payload = data['scenes']
+    normalized = _normalize_scene_plan_payload(scenes_payload)
+    if not normalized:
+        return jsonify({'error': 'No valid scenes to save'}), 400
+
+    os.makedirs('book_output/chapters', exist_ok=True)
+    scene_plan_file = f'book_output/chapters/chapter_{chapter_number}_scene_plan.json'
+    scene_plan_data = {
+        'chapter': chapter_number,
+        'scenes': normalized
+    }
+    try:
+        with open(scene_plan_file, 'w') as f:
+            json.dump(scene_plan_data, f, indent=2)
+    except IOError as err:
+        return jsonify({'error': f'Unable to write scene plan: {err}'}), 500
+
+    return jsonify({'success': True})
+
+
+def _prepare_scene_plan_for_display(scene_plan):
+    """Ensure each scene has text-friendly fallbacks for the UI."""
+    scenes = scene_plan.get('scenes', [])
+    for idx, scene in enumerate(scenes):
+        scene_number = _safe_scene_number(scene.get('scene_number'), idx + 1)
+        scene['scene_number'] = scene_number
+        scene.setdefault('title', f"Scene {scene_number}")
+        scene.setdefault('goal', '')
+        scene.setdefault('conflict', '')
+        scene.setdefault('outcome', '')
+        scene.setdefault('consequence', '')
+        scene.setdefault('summary', '')
+        scene.setdefault('key_events', [])
+        characters = scene.get('characters_present')
+        scene['characters_present_text'] = '\n'.join(characters) if isinstance(characters, (list, tuple)) else (characters or '')
+        scene['prerequisites_text'] = _prerequisites_to_text(scene.get('prerequisites'))
+    return scene_plan
+
+
+def _normalize_scene_plan_payload(scenes_payload):
+    normalized = []
+    for idx, scene in enumerate(scenes_payload):
+        scene_number = _safe_scene_number(scene.get('scene_number'), idx + 1)
+        title = (scene.get('title') or f"Scene {scene_number}").strip()
+        goal = (scene.get('goal') or '').strip()
+        conflict = (scene.get('conflict') or '').strip()
+        outcome = (scene.get('outcome') or '').strip()
+        consequence = (scene.get('consequence') or '').strip()
+        summary = (scene.get('summary') or '').strip()
+        characters = _split_lines(scene.get('characters_present'))
+        prerequisites_desc = (scene.get('prerequisites') or '').strip()
+
+        normalized.append({
+            'scene_number': scene_number,
+            'title': title,
+            'goal': goal,
+            'conflict': conflict,
+            'outcome': outcome,
+            'consequence': consequence,
+            'characters_present': characters,
+            'prerequisites': {'description': prerequisites_desc},
+            'summary': summary,
+            'key_events': _derive_key_events({'goal': goal, 'conflict': conflict, 'outcome': outcome, 'consequence': consequence, 'summary': summary})
+        })
+    return normalized
+
+
+def _derive_key_events(scene_data):
+    events = []
+    for field in ['goal', 'conflict', 'outcome', 'consequence', 'summary']:
+        value = scene_data.get(field)
+        if isinstance(value, str) and value.strip():
+            events.append(value.strip())
+    return events
+
+
+def _split_lines(raw_value):
+    if not raw_value:
+        return []
+    if isinstance(raw_value, (list, tuple)):
+        return [str(v).strip() for v in raw_value if str(v).strip()]
+    return [line.strip() for line in str(raw_value).splitlines() if line.strip()]
+
+
+def _prerequisites_to_text(prerequisites):
+    if not prerequisites:
+        return ''
+    if isinstance(prerequisites, str):
+        return prerequisites.strip()
+    if isinstance(prerequisites, dict):
+        entries = []
+        for key, value in prerequisites.items():
+            if not value:
+                continue
+            formatted = value
+            if isinstance(value, (list, tuple)):
+                formatted = ', '.join(str(item) for item in value if str(item).strip())
+            entries.append(f"{key}: {formatted}")
+        return '\n'.join(entries)
+    return str(prerequisites)
+
+
+def _safe_scene_number(value, fallback):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return fallback
 
 @app.route('/get_story_state', methods=['GET'])
 def get_story_state():
